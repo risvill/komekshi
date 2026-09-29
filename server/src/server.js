@@ -504,6 +504,346 @@ app.post('/products', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/tasks', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        t.id,
+        t.title,
+        t.status,
+        t.deadline,
+        t.created_at,
+        t.updated_at,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', o.id,
+              'client_name', c.name,
+              'order_date', o.order_date,
+              'order_time', o.order_time,
+              'total', o.total
+            )
+          ) FILTER (WHERE o.id IS NOT NULL),
+          '[]'
+        ) AS orders
+      FROM tasks t
+      LEFT JOIN task_orders to_link
+        ON to_link.task_id = t.id
+      LEFT JOIN orders o
+        ON o.id = to_link.order_id
+      LEFT JOIN clients c
+        ON c.id = o.client_id
+      WHERE t.user_id = $1
+      GROUP BY t.id
+      ORDER BY
+        t.deadline IS NULL,
+        t.deadline ASC,
+        t.created_at DESC
+      `,
+      [req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Failed to get tasks:', error);
+
+    res.status(500).json({
+      message: 'Не удалось загрузить задачи',
+    });
+  }
+});
+
+app.get('/tasks/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT
+        t.id,
+        t.user_id,
+        t.title,
+        t.status,
+        t.deadline,
+        t.created_at,
+        t.updated_at,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', o.id,
+              'client_name', c.name
+            )
+          ) FILTER (WHERE o.id IS NOT NULL),
+          '[]'
+        ) AS orders
+      FROM tasks t
+      LEFT JOIN task_orders tor
+        ON tor.task_id = t.id
+      LEFT JOIN orders o
+        ON o.id = tor.order_id
+      LEFT JOIN clients c
+        ON c.id = o.client_id
+      WHERE t.id = $1
+        AND t.user_id = $2
+      GROUP BY t.id
+      `,
+      [id, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Task not found',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: 'Failed to load task',
+    });
+  }
+});
+
+app.post('/tasks', authMiddleware, async (req, res) => {
+  const { title, deadline, order_ids } = req.body;
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({
+      message: 'Название задачи обязательно',
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const taskResult = await client.query(
+      `
+      INSERT INTO tasks (
+        id,
+        user_id,
+        title,
+        status,
+        deadline
+      )
+      VALUES (
+        gen_random_uuid(),
+        $1,
+        $2,
+        'TODO',
+        $3
+      )
+      RETURNING *
+      `,
+      [
+        req.user.id,
+        title.trim(),
+        deadline || null,
+      ]
+    );
+
+    const task = taskResult.rows[0];
+
+    if (Array.isArray(order_ids)) {
+      for (const orderId of order_ids) {
+        await client.query(
+          `
+          INSERT INTO task_orders (
+            task_id,
+            order_id
+          )
+          SELECT $1, $2
+          WHERE EXISTS (
+            SELECT 1
+            FROM orders
+            WHERE id = $2
+              AND user_id = $3
+          )
+          ON CONFLICT DO NOTHING
+          `,
+          [
+            task.id,
+            orderId,
+            req.user.id,
+          ]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    res.status(201).json(task);
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('Failed to create task:', error);
+
+    res.status(500).json({
+      message: 'Не удалось создать задачу',
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.patch('/tasks/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { title, deadline } = req.body;
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({
+      message: 'Название задачи обязательно',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE tasks
+      SET
+        title = $1,
+        deadline = $2,
+        updated_at = now()
+      WHERE id = $3
+        AND user_id = $4
+      RETURNING *
+      `,
+      [
+        title.trim(),
+        deadline || null,
+        id,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Задача не найдена',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update task:', error);
+
+    res.status(500).json({
+      message: 'Не удалось изменить задачу',
+    });
+  }
+});
+
+app.patch('/tasks/:id/status', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const allowedStatuses = [
+    'TODO',
+    'IN_PROGRESS',
+    'DONE',
+  ];
+
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({
+      message: 'Недопустимый статус задачи',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE tasks
+      SET
+        status = $1,
+        updated_at = now()
+      WHERE id = $2
+        AND user_id = $3
+      RETURNING *
+      `,
+      [
+        status,
+        id,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Задача не найдена',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update task status:', error);
+
+    res.status(500).json({
+      message: 'Не удалось изменить статус задачи',
+    });
+  }
+});
+
+app.delete('/tasks/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `
+      DELETE FROM task_orders
+      WHERE task_id = $1
+        AND EXISTS (
+          SELECT 1
+          FROM tasks
+          WHERE tasks.id = $1
+            AND tasks.user_id = $2
+        )
+      `,
+      [id, req.user.id]
+    );
+
+    const result = await client.query(
+      `
+      DELETE FROM tasks
+      WHERE id = $1
+        AND user_id = $2
+      RETURNING id
+      `,
+      [
+        id,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        message: 'Задача не найдена',
+      });
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Задача удалена',
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to delete task:', error);
+
+    res.status(500).json({
+      message: 'Не удалось удалить задачу',
+    });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/register', async (req, res) => {
   try {
     const { name, phone, email, password, business_name } = req.body;
@@ -539,6 +879,7 @@ app.post('/register', async (req, res) => {
     });
   }
 });
+
 
 app.post('/login', async (req, res) => {
   try {

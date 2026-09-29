@@ -19,6 +19,20 @@ export default function More() {
 
         <Text style={styles.arrow}>›</Text>
       </Pressable>
+
+      <Pressable
+        style={styles.menuItem}
+        onPress={() => router.push('/tasks')}
+      >
+        <View>
+          <Text style={styles.menuTitle}>Tasks</Text>
+          <Text style={styles.menuSubtitle}>
+            Manage your tasks and deadlines
+          </Text>
+        </View>
+
+        <Text style={styles.arrow}>›</Text>
+      </Pressable>
     </View>
   );
 }
@@ -42,6 +56,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: 16,
     backgroundColor: '#F7F7F7',
+    marginBottom: 12,
   },
 
   menuTitle: {
