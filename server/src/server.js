@@ -504,6 +504,217 @@ app.post('/products', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/accounts', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        type,
+        is_active,
+        created_at,
+        updated_at
+      FROM accounts
+      WHERE user_id = $1
+      ORDER BY
+        is_active DESC,
+        name ASC
+      `,
+      [req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Failed to get accounts:', error);
+
+    res.status(500).json({
+      message: 'Не удалось загрузить счета',
+    });
+  }
+});
+
+app.post('/accounts', authMiddleware, async (req, res) => {
+  const { name, type } = req.body;
+
+  const allowedTypes = [
+    'KASPI',
+    'CASH',
+  ];
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({
+      message: 'Название счёта обязательно',
+    });
+  }
+
+  if (!allowedTypes.includes(type)) {
+    return res.status(400).json({
+      message: 'Недопустимый тип счёта',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO accounts (
+        id,
+        user_id,
+        name,
+        type,
+        is_active
+      )
+      VALUES (
+        gen_random_uuid(),
+        $1,
+        $2,
+        $3,
+        true
+      )
+      RETURNING *
+      `,
+      [
+        req.user.id,
+        name.trim(),
+        type,
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to create account:', error);
+
+    res.status(500).json({
+      message: 'Не удалось создать счёт',
+    });
+  }
+});
+
+app.get('/orders/:id/payments', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        p.id,
+        p.order_id,
+        p.account_id,
+        p.amount,
+        p.payment_date,
+        p.created_at,
+        a.name AS account_name,
+        a.type AS account_type
+      FROM payments p
+      JOIN accounts a
+        ON a.id = p.account_id
+      JOIN orders o
+        ON o.id = p.order_id
+      WHERE p.order_id = $1
+        AND o.user_id = $2
+      ORDER BY p.payment_date DESC, p.created_at DESC
+      `,
+      [id, req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Failed to get order payments:', error);
+
+    res.status(500).json({
+      message: 'Не удалось загрузить платежи',
+    });
+  }
+});
+
+app.post('/orders/:id/payments', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { account_id, amount, payment_date } = req.body;
+
+  if (!account_id || amount === undefined) {
+    return res.status(400).json({
+      message: 'Счёт и сумма обязательны',
+    });
+  }
+
+  const paymentAmount = Number(amount);
+
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    return res.status(400).json({
+      message: 'Сумма платежа должна быть больше 0',
+    });
+  }
+
+  try {
+    const orderResult = await pool.query(
+      `
+      SELECT id, total
+      FROM orders
+      WHERE id = $1
+        AND user_id = $2
+      `,
+      [id, req.user.id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Заказ не найден',
+      });
+    }
+
+    const accountResult = await pool.query(
+      `
+      SELECT id
+      FROM accounts
+      WHERE id = $1
+        AND user_id = $2
+        AND is_active = true
+      `,
+      [account_id, req.user.id]
+    );
+
+    if (accountResult.rows.length === 0) {
+      return res.status(400).json({
+        message: 'Счёт не найден или отключён',
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO payments (
+        id,
+        order_id,
+        account_id,
+        amount,
+        payment_date
+      )
+      VALUES (
+        gen_random_uuid(),
+        $1,
+        $2,
+        $3,
+        $4
+      )
+      RETURNING *
+      `,
+      [
+        id,
+        account_id,
+        paymentAmount,
+        payment_date || new Date().toISOString(),
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to create payment:', error);
+
+    res.status(500).json({
+      message: 'Не удалось добавить платёж',
+    });
+  }
+});
+
 app.get('/tasks', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -842,6 +1053,43 @@ app.delete('/tasks/:id', authMiddleware, async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+app.get('/orders/:id/tasks', authMiddleware, async (req, res) => {
+try {
+const { id } = req.params;
+
+const result = await pool.query(
+  `
+  SELECT
+    t.id,
+    t.title,
+    t.status,
+    t.deadline,
+    t.created_at,
+    t.updated_at
+  FROM tasks t
+  JOIN task_orders to_link
+    ON to_link.task_id = t.id
+  WHERE to_link.order_id = $1
+    AND t.user_id = $2
+  ORDER BY
+    t.deadline ASC NULLS LAST,
+    t.created_at DESC
+  `,
+  [id, req.user.id]
+);
+
+res.json(result.rows);
+
+} catch (error) {
+console.error('Failed to get tasks for order:', error);
+
+res.status(500).json({
+  message: 'Failed to get tasks for order'
+});
+
+}
 });
 
 app.post('/register', async (req, res) => {

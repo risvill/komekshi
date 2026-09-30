@@ -46,6 +46,13 @@ export default function AppLayout() {
       />
 
       <Tabs.Screen
+        name="accounts"
+        options={{
+          href: null,
+        }}
+      />
+
+      <Tabs.Screen
       name="new-product"
       options={{
         href: null,

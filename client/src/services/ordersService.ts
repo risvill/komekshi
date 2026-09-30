@@ -37,17 +37,29 @@ export async function createOrder(
     token
   );
 }
+
 export async function updateOrderStatus(
-token: string,
-orderId: string,
-status: string
+  token: string,
+  orderId: string,
+  status: string
 ): Promise<Order> {
-return apiFetch(
-'/orders/' + orderId + '/status',
-{
-method: 'PATCH',
-body: JSON.stringify({ status }),
-},
-token
-);
+  return apiFetch(
+    '/orders/' + orderId + '/status',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+    token
+  );
+}
+
+export async function getTasksForOrder(
+  token: string,
+  orderId: string
+) {
+  return apiFetch(
+    '/orders/' + orderId + '/tasks',
+    {},
+    token
+  );
 }
