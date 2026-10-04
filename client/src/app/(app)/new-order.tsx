@@ -3,11 +3,18 @@ import {
   useFocusEffect,
   useLocalSearchParams,
 } from 'expo-router';
+
 import {
   useCallback,
   useEffect,
   useState,
 } from 'react';
+
+import {
+  consumeSelectedClient,
+  consumeSelectedProducts,
+} from '@/services/orderSelection';
+
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +25,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +39,26 @@ import { Product } from '@/types/product';
 import { createOrder } from '@/services/ordersService';
 
 import { OrderItem } from '@/types/orderItem';
+
+function formatPhoneNumber(phone: string) {
+  const digits = phone.replace(/\D/g, '');
+
+  let normalized = digits;
+
+  if (normalized.startsWith('8')) {
+    normalized = '7' + normalized.slice(1);
+  }
+
+  if (normalized.startsWith('7')) {
+    normalized = normalized.slice(1);
+  }
+
+  if (normalized.length !== 10) {
+    return phone;
+  }
+
+  return `+7 ${normalized.slice(0, 3)} ${normalized.slice(3, 6)} ${normalized.slice(6, 8)} ${normalized.slice(8, 10)}`;
+}
 
 export default function NewOrder() {
   const { token } = useAuth();
@@ -47,9 +75,6 @@ export default function NewOrder() {
 
   const [selectedClientId, setSelectedClientId] =
     useState<string | undefined>();
-
-  const [clientPickerOpen, setClientPickerOpen] =
-    useState(false);
 
   const [items, setItems] = useState<OrderItem[]>([]);
 
@@ -96,6 +121,45 @@ export default function NewOrder() {
   useFocusEffect(
     useCallback(() => {
       loadData();
+
+      const selectedClient =
+        consumeSelectedClient();
+
+      if (selectedClient !== undefined) {
+        setSelectedClientId(selectedClient);
+      }
+
+      const selectedProducts =
+        consumeSelectedProducts();
+
+      if (selectedProducts.length > 0) {
+        setItems((currentItems) => {
+          const existingIds = new Set(
+            currentItems.map(
+              (item) => item.product_id
+            )
+          );
+
+          const newItems =
+            selectedProducts
+              .filter(
+                (product) =>
+                  !existingIds.has(product.id)
+              )
+              .map((product) => ({
+                product_id: product.id,
+                name: product.name,
+                quantity: 1,
+                price: Number(product.price),
+                unit: product.unit,
+              }));
+
+          return [
+            ...currentItems,
+            ...newItems,
+          ];
+        });
+      }
     }, [token])
   );
 
@@ -117,40 +181,6 @@ export default function NewOrder() {
     (client) =>
       client.id === selectedClientId
   );
-
-  const addProductToOrder = (
-    product: Product
-  ) => {
-    setItems((current) => {
-      const existingItem = current.find(
-        (item) =>
-          item.product_id === product.id
-      );
-
-      if (existingItem) {
-        return current.map((item) =>
-          item.product_id === product.id
-            ? {
-                ...item,
-                quantity:
-                  item.quantity + 1,
-              }
-            : item
-        );
-      }
-
-      return [
-        ...current,
-        {
-          product_id: product.id,
-          name: product.name,
-          quantity: 1,
-          price: Number(product.price),
-          unit: product.unit,
-        },
-      ];
-    });
-  };
 
   const changeItemQuantity = (
     productId: string,
@@ -296,7 +326,9 @@ export default function NewOrder() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() =>
+            router.replace('/orders')
+          }
           hitSlop={8}
           style={styles.backButtonContainer}
         >
@@ -313,126 +345,49 @@ export default function NewOrder() {
       </View>
 
       <View style={styles.form}>
+
         {/* КЛИЕНТ */}
 
         <Text style={styles.sectionLabel}>
-          КЛИЕНТ
-        </Text>
+  КЛИЕНТ
+</Text>
 
-        <Pressable
-          style={styles.selector}
-          onPress={() =>
-            setClientPickerOpen(
-              (value) => !value
-            )
-          }
-        >
-          <View>
-            <Text
-              style={[
-                styles.selectorText,
-                !selectedClient &&
-                  styles.placeholderText,
-              ]}
-            >
-              {selectedClient
-                ? selectedClient.name
-                : 'Без клиента'}
-            </Text>
+<Pressable
+  style={styles.selector}
+  onPress={() =>
+    router.push({
+      pathname: '/select-client',
+      params: {
+        selectedClientId:
+          selectedClientId || '',
+      },
+    })
+  }
+>
+  <View style={styles.selectorContent}>
+    <Text
+      style={[
+        styles.selectorText,
+        !selectedClient &&
+          styles.placeholderText,
+      ]}
+    >
+      {selectedClient
+        ? selectedClient.name
+        : 'Выберите клиента'}
+    </Text>
 
-            {selectedClient?.phone && (
-              <Text style={styles.selectorSubtext}>
-                {selectedClient.phone}
-              </Text>
-            )}
-          </View>
+    {selectedClient?.phone && (
+      <Text style={styles.selectorSubtext}>
+        {formatPhoneNumber(selectedClient.phone)}
+      </Text>
+    )}
+  </View>
 
-          <Text style={styles.chevron}>
-            {clientPickerOpen ? '⌃' : '⌄'}
-          </Text>
-        </Pressable>
-
-        {clientPickerOpen && (
-          <View style={styles.picker}>
-            <Pressable
-              style={styles.pickerOption}
-              onPress={() => {
-                setSelectedClientId(
-                  undefined
-                );
-                setClientPickerOpen(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.pickerText,
-                  !selectedClientId &&
-                    styles.pickerTextActive,
-                ]}
-              >
-                Без клиента
-              </Text>
-            </Pressable>
-
-            {clients.map((client) => (
-              <Pressable
-                key={client.id}
-                style={styles.pickerOption}
-                onPress={() => {
-                  setSelectedClientId(
-                    client.id
-                  );
-
-                  setClientPickerOpen(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.pickerText,
-                    selectedClientId ===
-                      client.id &&
-                      styles.pickerTextActive,
-                  ]}
-                >
-                  {client.name}
-                </Text>
-
-                {client.phone && (
-                  <Text
-                    style={
-                      styles.pickerSubtext
-                    }
-                  >
-                    {client.phone}
-                  </Text>
-                )}
-              </Pressable>
-            ))}
-
-            <Pressable
-              style={styles.createClientOption}
-              onPress={() => {
-                setClientPickerOpen(false);
-
-                router.push({
-                  pathname:
-                    '/new-client',
-                  params: {
-                    fromOrder: 'true',
-                  },
-                });
-              }}
-            >
-              <Text
-                style={
-                  styles.createClientText
-                }
-              >
-                + Создать клиента
-              </Text>
-            </Pressable>
-          </View>
-        )}
+  <Text style={styles.chevron}>
+    ›
+  </Text>
+</Pressable>
 
         {/* ТОВАРЫ */}
 
@@ -445,48 +400,61 @@ export default function NewOrder() {
           ТОВАРЫ
         </Text>
 
-        <View style={styles.productsList}>
-          {products.map((product) => (
-            <Pressable
-              key={product.id}
-              style={styles.productCard}
-              onPress={() =>
-                addProductToOrder(product)
-              }
+        <Pressable
+          style={styles.addProductsButton}
+          onPress={() =>
+            router.push({
+              pathname: '/select-product',
+              params: {
+                selectedProductIds:
+                  items
+                    .map(
+                      (item) =>
+                        item.product_id
+                    )
+                    .join(','),
+              },
+            })
+          }
+        >
+          <View
+            style={styles.addProductsIcon}
+          >
+            <Text
+              style={styles.addProductsIconText}
             >
-              <View style={styles.productInfo}>
-                <Text
-                  style={styles.productName}
-                >
-                  {product.name}
-                </Text>
+              +
+            </Text>
+          </View>
 
-                <Text
-                  style={styles.productPrice}
-                >
-                  {product.price} ₸ /{' '}
-                  {product.unit === 'piece'
-                    ? 'шт.'
-                    : 'порция'}
-                </Text>
-              </View>
+          <View
+            style={styles.addProductsContent}
+          >
+            <Text
+              style={styles.addProductsTitle}
+            >
+              Добавить товары
+            </Text>
 
-              <View
-                style={
-                  styles.productAddButton
-                }
-              >
-                <Text
-                  style={
-                    styles.productAddText
-                  }
-                >
-                  +
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
+            <Text
+              style={styles.addProductsSubtitle}
+            >
+              {items.length > 0
+                ? `${items.length} ${
+                    items.length === 1
+                      ? 'товар'
+                      : items.length < 5
+                        ? 'товара'
+                        : 'товаров'
+                  } в заказе`
+                : 'Выберите товары для заказа'}
+            </Text>
+          </View>
+
+          <Text style={styles.chevron}>
+            ›
+          </Text>
+        </Pressable>
 
         {/* В ЗАКАЗЕ */}
 
@@ -832,7 +800,9 @@ export default function NewOrder() {
                 Скидка
               </Text>
 
-              <Text style={styles.discountValueText}>
+              <Text
+                style={styles.discountValueText}
+              >
                 −{discountAmount} ₸
               </Text>
             </View>
@@ -914,7 +884,7 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    fontSize: 28,
+    fontSize: 20,
     lineHeight: 30,
     color: '#111111',
   },
@@ -924,7 +894,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#111111',
   },
@@ -942,7 +912,7 @@ const styles = StyleSheet.create({
   },
 
   selector: {
-    minHeight: 56,
+    minHeight: 64,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 16,
@@ -952,122 +922,85 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
+  selectorContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+
   selectorText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#111111',
   },
 
   selectorSubtext: {
-    marginTop: 3,
+    marginTop: 4,
     fontSize: 13,
     color: '#888888',
   },
 
   placeholderText: {
     color: '#999999',
+    fontWeight: '500',
   },
 
   chevron: {
-    fontSize: 20,
+    fontSize: 28,
+    lineHeight: 30,
     color: '#777777',
-  },
-
-  picker: {
-    marginTop: 8,
-    borderRadius: 16,
-    backgroundColor: '#F7F7F7',
-    overflow: 'hidden',
-  },
-
-  pickerOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EAEAEA',
-  },
-
-  pickerText: {
-    fontSize: 15,
-    color: '#555555',
-  },
-
-  pickerTextActive: {
-    fontWeight: '600',
-    color: '#111111',
-  },
-
-  pickerSubtext: {
-    marginTop: 3,
-    fontSize: 13,
-    color: '#888888',
-  },
-
-  createClientOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-  },
-
-  createClientText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111111',
+    fontWeight: '300',
   },
 
   productsSectionLabel: {
-    marginTop: 28,
+    marginTop: 20,
   },
 
-  productsList: {
-    gap: 8,
-  },
-
-  productCard: {
+  addProductsButton: {
     minHeight: 68,
     paddingHorizontal: 16,
-    paddingVertical: 13,
+    paddingVertical: 12,
     borderRadius: 16,
     backgroundColor: '#F7F7F7',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
 
-  productInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-
-  productName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111111',
-  },
-
-  productPrice: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#888888',
-  },
-
-  productAddButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  addProductsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  productAddText: {
+  addProductsIconText: {
     color: '#FFFFFF',
-    fontSize: 21,
-    lineHeight: 23,
+    fontSize: 22,
+    lineHeight: 24,
     fontWeight: '300',
   },
 
+  addProductsContent: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+
+  addProductsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  addProductsSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#888888',
+  },
+
   selectedSection: {
-    marginTop: 28,
+    marginTop: 20,
   },
 
   selectedItemsCard: {
@@ -1136,7 +1069,7 @@ const styles = StyleSheet.create({
   dateTimeSection: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 28,
+    marginTop: 20,
   },
 
   dateTimeColumn: {
@@ -1157,7 +1090,7 @@ const styles = StyleSheet.create({
   },
 
   discountSectionLabel: {
-    marginTop: 28,
+    marginTop: 20,
   },
 
   discountTypes: {
@@ -1167,8 +1100,8 @@ const styles = StyleSheet.create({
 
   discountTypeButton: {
     flex: 1,
-    height: 48,
-    borderRadius: 14,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: '#F7F7F7',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1189,7 +1122,7 @@ const styles = StyleSheet.create({
   },
 
   discountInputContainer: {
-    marginTop: 8,
+    marginTop: 20,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -1214,7 +1147,7 @@ const styles = StyleSheet.create({
   },
 
   totalCard: {
-    marginTop: 28,
+    marginTop: 20,
     padding: 16,
     borderRadius: 16,
     backgroundColor: '#F7F7F7',

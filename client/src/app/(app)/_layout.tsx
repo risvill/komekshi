@@ -118,6 +118,19 @@ export default function AppLayout() {
           }}
         />
 
+        <Tabs.Screen
+          name="select-client"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="select-product"
+          options={{
+            href: null,
+          }}
+        />
+
       </Tabs>
     </SafeAreaView>
   );
