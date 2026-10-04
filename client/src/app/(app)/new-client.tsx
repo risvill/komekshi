@@ -185,7 +185,7 @@ export default function NewClient() {
           +
         </Text>
 
-        <View>
+        <View style={styles.contactText}>
           <Text style={styles.contactTitle}>
             Выбрать контакт
           </Text>
@@ -303,15 +303,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  contactText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
   contactSubtitle: {
     marginTop: 4,
     fontSize: 13,
     opacity: 0.5,
+    flexShrink: 1,
   },
 
   divider: {
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 10,
     alignItems: 'center',
   },
 

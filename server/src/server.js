@@ -38,10 +38,27 @@ app.get('/db-test', async (req, res) => {
 app.get('/clients', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, phone, created_at
-       FROM clients
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
+      `
+      SELECT
+        c.id,
+        c.name,
+        c.phone,
+        c.created_at,
+
+        (
+          SELECT COUNT(*)
+          FROM orders o
+          WHERE o.client_id = c.id
+            AND o.user_id = $1
+            AND o.status = 'COMPLETED'
+        ) AS completed_orders_count
+
+      FROM clients c
+
+      WHERE c.user_id = $1
+
+      ORDER BY c.created_at DESC
+      `,
       [req.user.id]
     );
 
@@ -54,7 +71,6 @@ app.get('/clients', authMiddleware, async (req, res) => {
     });
   }
 });
-
 app.post('/clients', authMiddleware, async (req, res) => {
   try {
     const { name, phone } = req.body;
@@ -509,17 +525,28 @@ app.get('/accounts', authMiddleware, async (req, res) => {
     const result = await pool.query(
       `
       SELECT
-        id,
-        name,
-        type,
-        is_active,
-        created_at,
-        updated_at
-      FROM accounts
-      WHERE user_id = $1
+        a.id,
+        a.name,
+        a.type,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        COALESCE(
+          (
+            SELECT SUM(p.amount)
+            FROM payments p
+            JOIN orders o
+              ON o.id = p.order_id
+            WHERE p.account_id = a.id
+              AND o.user_id = $1
+          ),
+          0
+        ) AS balance
+      FROM accounts a
+      WHERE a.user_id = $1
       ORDER BY
-        is_active DESC,
-        name ASC
+        a.is_active DESC,
+        a.name ASC
       `,
       [req.user.id]
     );
@@ -587,6 +614,182 @@ app.post('/accounts', authMiddleware, async (req, res) => {
     res.status(500).json({
       message: 'Не удалось создать счёт',
     });
+  }
+});
+
+app.patch('/accounts/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { name, type } = req.body;
+
+  const allowedTypes = [
+    'KASPI',
+    'CASH',
+  ];
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({
+      message: 'Название счёта обязательно',
+    });
+  }
+
+  if (!allowedTypes.includes(type)) {
+    return res.status(400).json({
+      message: 'Недопустимый тип счёта',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE accounts
+      SET
+        name = $1,
+        type = $2,
+        updated_at = NOW()
+      WHERE id = $3
+        AND user_id = $4
+      RETURNING *
+      `,
+      [
+        name.trim(),
+        type,
+        id,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Счёт не найден',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update account:', error);
+
+    res.status(500).json({
+      message: 'Не удалось изменить счёт',
+    });
+  }
+});
+
+app.delete('/accounts/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { target_account_id } = req.body;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const accountResult = await client.query(
+      `
+      SELECT id, name
+      FROM accounts
+      WHERE id = $1
+        AND user_id = $2
+      `,
+      [id, req.user.id]
+    );
+
+    if (accountResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        message: 'Счёт не найден',
+      });
+    }
+
+    const paymentsResult = await client.query(
+      `
+      SELECT COUNT(*)::int AS count
+      FROM payments p
+      JOIN orders o
+        ON o.id = p.order_id
+      WHERE p.account_id = $1
+        AND o.user_id = $2
+      `,
+      [id, req.user.id]
+    );
+
+    const paymentCount = paymentsResult.rows[0].count;
+
+    if (paymentCount > 0) {
+      if (!target_account_id) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          message: 'Необходимо выбрать счёт для переноса платежей',
+        });
+      }
+
+      if (target_account_id === id) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          message: 'Нельзя перенести платежи на тот же счёт',
+        });
+      }
+
+      const targetAccountResult = await client.query(
+        `
+        SELECT id
+        FROM accounts
+        WHERE id = $1
+          AND user_id = $2
+          AND is_active = true
+        `,
+        [target_account_id, req.user.id]
+      );
+
+      if (targetAccountResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          message: 'Счёт для переноса не найден или отключён',
+        });
+      }
+
+      await client.query(
+        `
+        UPDATE payments p
+        SET account_id = $1
+        FROM orders o
+        WHERE p.account_id = $2
+          AND p.order_id = o.id
+          AND o.user_id = $3
+        `,
+        [
+          target_account_id,
+          id,
+          req.user.id,
+        ]
+      );
+    }
+
+    await client.query(
+      `
+      DELETE FROM accounts
+      WHERE id = $1
+        AND user_id = $2
+      `,
+      [id, req.user.id]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(204).send();
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('Failed to delete account:', error);
+
+    res.status(500).json({
+      message: 'Не удалось удалить счёт',
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -715,6 +918,69 @@ app.post('/orders/:id/payments', authMiddleware, async (req, res) => {
   }
 });
 
+app.patch('/me', authMiddleware, async (req, res) => {
+  const {
+    name,
+    email,
+    phone,
+    business_name,
+  } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({
+      message: 'Имя обязательно',
+    });
+  }
+
+  if (!email || !email.trim()) {
+    return res.status(400).json({
+      message: 'Email обязателен',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET
+        name = $1,
+        email = $2,
+        phone = $3,
+        business_name = $4,
+        updated_at = NOW()
+      WHERE id = $5
+      RETURNING
+        id,
+        name,
+        phone,
+        email,
+        business_name
+      `,
+      [
+        name.trim(),
+        email.trim(),
+        phone?.trim() || null,
+        business_name?.trim() || null,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Пользователь не найден',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update profile:', error);
+
+    res.status(500).json({
+      message: 'Не удалось изменить данные аккаунта',
+    });
+  }
+});
+
 app.get('/tasks', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -817,7 +1083,6 @@ app.get('/tasks/:id', authMiddleware, async (req, res) => {
     });
   }
 });
-
 app.post('/tasks', authMiddleware, async (req, res) => {
   const { title, deadline, order_ids } = req.body;
 
@@ -831,6 +1096,52 @@ app.post('/tasks', authMiddleware, async (req, res) => {
 
   try {
     await client.query('BEGIN');
+
+    const orderIds = Array.isArray(order_ids)
+      ? [...new Set(order_ids)]
+      : [];
+
+    if (orderIds.length > 0) {
+      const ordersResult = await client.query(
+        `
+        SELECT
+          id,
+          status
+        FROM orders
+        WHERE id = ANY($1::uuid[])
+          AND user_id = $2
+        `,
+        [
+          orderIds,
+          req.user.id,
+        ]
+      );
+
+      const orders = ordersResult.rows;
+
+      if (orders.length !== orderIds.length) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          message: 'Один или несколько заказов не найдены',
+        });
+      }
+
+      const forbiddenOrders = orders.filter(
+        (order) =>
+          order.status !== 'ACCEPTED' &&
+          order.status !== 'IN_PROGRESS'
+      );
+
+      if (forbiddenOrders.length > 0) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          message:
+            'К задаче можно привязывать только принятые заказы или заказы в процессе',
+        });
+      }
+    }
 
     const taskResult = await client.query(
       `
@@ -859,30 +1170,21 @@ app.post('/tasks', authMiddleware, async (req, res) => {
 
     const task = taskResult.rows[0];
 
-    if (Array.isArray(order_ids)) {
-      for (const orderId of order_ids) {
-        await client.query(
-          `
-          INSERT INTO task_orders (
-            task_id,
-            order_id
-          )
-          SELECT $1, $2
-          WHERE EXISTS (
-            SELECT 1
-            FROM orders
-            WHERE id = $2
-              AND user_id = $3
-          )
-          ON CONFLICT DO NOTHING
-          `,
-          [
-            task.id,
-            orderId,
-            req.user.id,
-          ]
-        );
-      }
+    for (const orderId of orderIds) {
+      await client.query(
+        `
+        INSERT INTO task_orders (
+          task_id,
+          order_id
+        )
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        `,
+        [
+          task.id,
+          orderId,
+        ]
+      );
     }
 
     await client.query('COMMIT');

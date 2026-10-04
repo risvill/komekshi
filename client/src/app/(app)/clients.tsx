@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 
 import { useAuth } from '@/context/AuthContext';
 import { getClients } from '@/services/clientsService';
@@ -127,16 +126,21 @@ export default function Clients() {
                 })
               }
             >
-              <View>
+              <View style={styles.clientInfo}>
                 <Text style={styles.clientName}>
                   {client.name}
                 </Text>
 
                 {client.phone && (
                   <Text style={styles.clientPhone}>
-                    {client.phone}
+                    {formatPhoneNumber(client.phone)}
                   </Text>
                 )}
+
+                <Text style={styles.orderCount}>
+                  Заказов:{' '}
+                  {client.completed_orders_count}
+                </Text>
               </View>
 
               <Text style={styles.arrow}>
@@ -148,6 +152,35 @@ export default function Clients() {
       </View>
     </ScrollView>
   );
+}
+
+function formatPhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+
+  let normalized = digits;
+
+  if (normalized.startsWith('8') && normalized.length === 11) {
+    normalized = '7' + normalized.slice(1);
+  } else if (
+    normalized.startsWith('7') &&
+    normalized.length === 11
+  ) {
+    // Already in international Kazakhstan format.
+  } else if (normalized.length === 10) {
+    normalized = '7' + normalized;
+  }
+
+  if (
+    normalized.length === 11 &&
+    normalized.startsWith('7')
+  ) {
+    return `+7 ${normalized.slice(1, 4)} ${normalized.slice(
+      4,
+      7
+    )} ${normalized.slice(7, 9)} ${normalized.slice(9, 11)}`;
+  }
+
+  return phone;
 }
 
 const styles = StyleSheet.create({
@@ -217,6 +250,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  clientInfo: {
+    flex: 1,
+  },
+
   clientName: {
     fontSize: 17,
     fontWeight: '600',
@@ -227,9 +264,16 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 
+  orderCount: {
+    marginTop: 5,
+    fontSize: 13,
+    opacity: 0.6,
+  },
+
   arrow: {
     fontSize: 28,
     opacity: 0.4,
+    marginLeft: 12,
   },
 
   emptyState: {

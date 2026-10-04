@@ -84,6 +84,8 @@ export default function Today() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState(3);
+  const [visibleTasksCount, setVisibleTasksCount] = useState(3);
   const [loading, setLoading] = useState(true);
 
   const today = getTodayDate();
@@ -121,6 +123,8 @@ export default function Today() {
 
       setOrders(todayOrders);
       setTasks(todayTasks);
+      setVisibleOrdersCount(3);
+      setVisibleTasksCount(3);
     } catch (error) {
       console.error('Failed to load today:', error);
     } finally {
@@ -142,6 +146,9 @@ export default function Today() {
     );
   }
 
+  const visibleOrders = orders.slice(0, visibleOrdersCount);
+  const visibleTasks = tasks.slice(0, visibleTasksCount);
+
   return (
     <ScrollView
       style={styles.container}
@@ -154,121 +161,147 @@ export default function Today() {
       </Text>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          Заказы сегодня
-        </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Заказы</Text>
+          <Pressable onPress={() => router.push('/orders')}>
+            <Text style={styles.linkText}>Все →</Text>
+          </Pressable>
+        </View>
 
         {orders.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>
-              Нет заказов
-            </Text>
-
+            <Text style={styles.emptyTitle}>Нет заказов</Text>
             <Text style={styles.emptyText}>
               На сегодня заказов пока нет
             </Text>
           </View>
         ) : (
-          orders.map((order) => (
-            <Pressable
-              key={order.id}
-              style={styles.card}
-              onPress={() =>
-                router.push({
-                  pathname: '/order-details',
-                  params: {
-                    id: order.id,
-                  },
-                })
-              }
-            >
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle}>
-                  {order.client_name || 'Без клиента'}
+          <>
+            {visibleOrders.map((order) => (
+              <Pressable
+                key={order.id}
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: '/order-details',
+                    params: {
+                      id: order.id,
+                    },
+                  })
+                }
+              >
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardTitle}>
+                    {order.client_name || 'Без клиента'}
+                  </Text>
+
+                  <Text style={styles.price}>{order.total} ₸</Text>
+                </View>
+
+                <Text style={styles.cardStatus}>
+                  {getOrderStatusLabel(order.status)}
                 </Text>
 
-                <Text style={styles.price}>
-                  {order.total} ₸
-                </Text>
-              </View>
+                {order.order_time && (
+                  <Text style={styles.cardInfo}>
+                    Время: {order.order_time}
+                  </Text>
+                )}
 
-              <Text style={styles.cardStatus}>
-                {getOrderStatusLabel(order.status)}
-              </Text>
+                {order.items.length > 0 && (
+                  <Text style={styles.cardInfo}>
+                    Товаров: {order.items.length}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
 
-              {order.order_time && (
-                <Text style={styles.cardInfo}>
-                  Время: {order.order_time}
-                </Text>
-              )}
-
-              {order.items.length > 0 && (
-                <Text style={styles.cardInfo}>
-                  Товаров: {order.items.length}
-                </Text>
-              )}
-            </Pressable>
-          ))
+            {orders.length > 3 && visibleOrdersCount < orders.length && (
+              <Pressable
+                style={styles.expandButton}
+                onPress={() =>
+                  setVisibleOrdersCount((current) =>
+                    Math.min(current + 2, orders.length)
+                  )
+                }
+              >
+                <Text style={styles.expandButtonText}>↓</Text>
+              </Pressable>
+            )}
+          </>
         )}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          Задачи сегодня
-        </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Задачи</Text>
+          <Pressable onPress={() => router.push('/tasks')}>
+            <Text style={styles.linkText}>Все →</Text>
+          </Pressable>
+        </View>
 
         {tasks.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>
-              Нет задач
-            </Text>
-
+            <Text style={styles.emptyTitle}>Нет задач</Text>
             <Text style={styles.emptyText}>
               На сегодня задач нет
             </Text>
           </View>
         ) : (
-          tasks.map((task) => (
-            <Pressable
-              key={task.id}
-              style={styles.card}
-              onPress={() =>
-                router.push({
-                  pathname: '/task-details',
-                  params: {
-                    id: task.id,
-                  },
-                })
-              }
-            >
-              <Text style={styles.cardTitle}>
-                {task.title}
-              </Text>
+          <>
+            {visibleTasks.map((task) => (
+              <Pressable
+                key={task.id}
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: '/task-details',
+                    params: {
+                      id: task.id,
+                    },
+                  })
+                }
+              >
+                <Text style={styles.cardTitle}>{task.title}</Text>
 
-              <Text style={styles.cardStatus}>
-                {getTaskStatusLabel(task.status)}
-              </Text>
-
-              {task.deadline && (
-                <Text style={styles.cardInfo}>
-                  Дедлайн:{' '}
-                  {new Date(task.deadline).toLocaleTimeString(
-                    'ru-RU',
-                    {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }
-                  )}
+                <Text style={styles.cardStatus}>
+                  {getTaskStatusLabel(task.status)}
                 </Text>
-              )}
 
-              {task.orders.length > 0 && (
-                <Text style={styles.cardInfo}>
-                  Связанных заказов: {task.orders.length}
-                </Text>
-              )}
-            </Pressable>
-          ))
+                {task.deadline && (
+                  <Text style={styles.cardInfo}>
+                    Дедлайн:{' '}
+                    {new Date(task.deadline).toLocaleTimeString(
+                      'ru-RU',
+                      {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      }
+                    )}
+                  </Text>
+                )}
+
+                {task.orders.length > 0 && (
+                  <Text style={styles.cardInfo}>
+                    Связанных заказов: {task.orders.length}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+
+            {tasks.length > 3 && visibleTasksCount < tasks.length && (
+              <Pressable
+                style={styles.expandButton}
+                onPress={() =>
+                  setVisibleTasksCount((current) =>
+                    Math.min(current + 2, tasks.length)
+                  )
+                }
+              >
+                <Text style={styles.expandButtonText}>↓</Text>
+              </Pressable>
+            )}
+          </>
         )}
       </View>
     </ScrollView>
@@ -307,10 +340,32 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
 
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
-    marginBottom: 12,
+  },
+
+  linkText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#208AEF',
+  },
+
+  expandButton: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+
+  expandButtonText: {
+    fontSize: 24,
+    color: '#208AEF',
   },
 
   card: {

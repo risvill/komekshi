@@ -21,6 +21,12 @@ type AuthContextType = {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (data: {
+    name: string;
+    email: string;
+    phone?: string | null;
+    business_name?: string | null;
+  }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -80,16 +86,55 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(null);
   };
 
+  const updateUser = async (data: {
+    name: string;
+    email: string;
+    phone?: string | null;
+    business_name?: string | null;
+  }) => {
+    if (!token) {
+      throw new Error('Нет авторизации');
+    }
+
+    const response = await fetch(
+      'http://127.0.0.1:3000/me',
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.message || 'Не удалось изменить данные'
+      );
+    }
+
+    await AsyncStorage.setItem(
+      'user',
+      JSON.stringify(result)
+    );
+
+    setUser(result);
+  };
+
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        token,
-        loading,
-        login,
-        logout,
-      }}
-    >
+    value={{
+      user,
+      token,
+      loading,
+      login,
+      logout,
+      updateUser,
+    }}
+  >
       {children}
     </AuthContext.Provider>
   );
@@ -104,3 +149,5 @@ export function useAuth() {
 
   return context;
 }
+
+

@@ -9,9 +9,15 @@ export type Account = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  balance: number | string;
 };
 
 export type CreateAccountData = {
+  name: string;
+  type: AccountType;
+};
+
+export type UpdateAccountData = {
   name: string;
   type: AccountType;
 };
@@ -31,6 +37,38 @@ export async function createAccount(
     {
       method: 'POST',
       body: JSON.stringify(account),
+    },
+    token
+  );
+}
+
+export async function updateAccount(
+  token: string,
+  accountId: string,
+  account: UpdateAccountData
+): Promise<Account> {
+  return apiFetch(
+    `/accounts/${accountId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(account),
+    },
+    token
+  );
+}
+
+export async function deleteAccount(
+  token: string,
+  accountId: string,
+  targetAccountId?: string
+): Promise<void> {
+  await apiFetch(
+    `/accounts/${accountId}`,
+    {
+      method: 'DELETE',
+      body: JSON.stringify({
+        target_account_id: targetAccountId,
+      }),
     },
     token
   );

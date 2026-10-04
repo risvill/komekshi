@@ -28,9 +28,7 @@ import { Client } from '@/types/client';
 import { getProducts } from '@/services/productsService';
 import { Product } from '@/types/product';
 
-import {
-  createOrder,
-} from '@/services/ordersService';
+import { createOrder } from '@/services/ordersService';
 
 import { OrderItem } from '@/types/orderItem';
 
@@ -47,29 +45,29 @@ export default function NewOrder() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
-  const [selectedClientId, setSelectedClientId] = useState<
-    string | undefined
-  >();
+  const [selectedClientId, setSelectedClientId] =
+    useState<string | undefined>();
 
-  const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const [clientPickerOpen, setClientPickerOpen] =
+    useState(false);
 
   const [items, setItems] = useState<OrderItem[]>([]);
 
-const [orderDate, setOrderDate] = useState('');
-const [orderTime, setOrderTime] = useState('');
+  const [orderDate, setOrderDate] = useState('');
+  const [orderTime, setOrderTime] = useState('');
 
-const [discountType, setDiscountType] = useState<
-  'PERCENT' | 'FIXED' | null
->(null);
+  const [discountType, setDiscountType] = useState<
+    'PERCENT' | 'FIXED' | null
+  >(null);
 
-const [discountValue, setDiscountValue] =
-  useState('');
+  const [discountValue, setDiscountValue] =
+    useState('');
 
-const [showDatePicker, setShowDatePicker] =
-  useState(false);
+  const [showDatePicker, setShowDatePicker] =
+    useState(false);
 
-const [showTimePicker, setShowTimePicker] =
-  useState(false);
+  const [showTimePicker, setShowTimePicker] =
+    useState(false);
 
   const loadData = async () => {
     if (!token) {
@@ -103,22 +101,30 @@ const [showTimePicker, setShowTimePicker] =
 
   useEffect(() => {
     if (!clientId || clients.length === 0) {
-        return;
+      return;
     }
 
     const clientExists = clients.some(
-        (client) => client.id === clientId
+      (client) => client.id === clientId
     );
 
     if (clientExists) {
-        setSelectedClientId(clientId);
+      setSelectedClientId(clientId);
     }
-    }, [clientId, clients]);
+  }, [clientId, clients]);
 
-  const addProductToOrder = (product: Product) => {
+  const selectedClient = clients.find(
+    (client) =>
+      client.id === selectedClientId
+  );
+
+  const addProductToOrder = (
+    product: Product
+  ) => {
     setItems((current) => {
       const existingItem = current.find(
-        (item) => item.product_id === product.id
+        (item) =>
+          item.product_id === product.id
       );
 
       if (existingItem) {
@@ -126,7 +132,8 @@ const [showTimePicker, setShowTimePicker] =
           item.product_id === product.id
             ? {
                 ...item,
-                quantity: item.quantity + 1,
+                quantity:
+                  item.quantity + 1,
               }
             : item
         );
@@ -148,31 +155,27 @@ const [showTimePicker, setShowTimePicker] =
   const changeItemQuantity = (
     productId: string,
     change: number
-    ) => {
+  ) => {
     setItems((current) =>
-        current
+      current
         .map((item) => {
-            if (item.product_id !== productId) {
+          if (
+            item.product_id !== productId
+          ) {
             return item;
-            }
+          }
 
-            const newQuantity =
+          const newQuantity =
             item.quantity + change;
 
-            return {
+          return {
             ...item,
             quantity: newQuantity,
-            };
+          };
         })
-        .filter((item) => item.quantity > 0)
-    );
-    };
-
-  const removeProductFromOrder = (productId: string) => {
-    setItems((current) =>
-      current.filter(
-        (item) => item.product_id !== productId
-      )
+        .filter(
+          (item) => item.quantity > 0
+        )
     );
   };
 
@@ -211,27 +214,40 @@ const [showTimePicker, setShowTimePicker] =
     try {
       setCreating(true);
 
-      const newOrder = await createOrder(token, {
-        client_id: selectedClientId,
+      const newOrder = await createOrder(
+        token,
+        {
+          client_id: selectedClientId,
 
-        order_date: orderDate || undefined,
-        order_time: orderTime || undefined,
-        discount_type:
-          discountType || undefined,
-        discount_value:
-          discountType
-            ? Number(discountValue) || 0
-            : undefined,
-        items: items.map((item) => ({
-          product_id: item.product_id ?? undefined,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          unit: item.unit,
-        })),
-      });
+          order_date:
+            orderDate || undefined,
 
-      console.log('created order:', newOrder);
+          order_time:
+            orderTime || undefined,
+
+          discount_type:
+            discountType || undefined,
+
+          discount_value:
+            discountType
+              ? Number(discountValue) || 0
+              : undefined,
+
+          items: items.map((item) => ({
+            product_id:
+              item.product_id ?? undefined,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            unit: item.unit,
+          })),
+        }
+      );
+
+      console.log(
+        'created order:',
+        newOrder
+      );
 
       Alert.alert(
         'Готово',
@@ -241,7 +257,8 @@ const [showTimePicker, setShowTimePicker] =
             text: 'Открыть заказ',
             onPress: () =>
               router.replace({
-                pathname: '/order-details',
+                pathname:
+                  '/order-details',
                 params: {
                   id: newOrder.id,
                 },
@@ -270,10 +287,18 @@ const [showTimePicker, setShowTimePicker] =
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={
+        styles.contentContainer
+      }
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
+          hitSlop={8}
+          style={styles.backButtonContainer}
         >
           <Text style={styles.backButton}>
             ←
@@ -288,41 +313,63 @@ const [showTimePicker, setShowTimePicker] =
       </View>
 
       <View style={styles.form}>
-        <Text style={styles.label}>
-          Клиент
+        {/* КЛИЕНТ */}
+
+        <Text style={styles.sectionLabel}>
+          КЛИЕНТ
         </Text>
 
         <Pressable
-          style={styles.clientSelector}
+          style={styles.selector}
           onPress={() =>
             setClientPickerOpen(
-              !clientPickerOpen
+              (value) => !value
             )
           }
         >
-          <Text>
-            {selectedClientId
-              ? clients.find(
-                  (client) =>
-                    client.id ===
-                    selectedClientId
-                )?.name
-              : 'Без клиента'}
-          </Text>
+          <View>
+            <Text
+              style={[
+                styles.selectorText,
+                !selectedClient &&
+                  styles.placeholderText,
+              ]}
+            >
+              {selectedClient
+                ? selectedClient.name
+                : 'Без клиента'}
+            </Text>
 
-          <Text>⌄</Text>
+            {selectedClient?.phone && (
+              <Text style={styles.selectorSubtext}>
+                {selectedClient.phone}
+              </Text>
+            )}
+          </View>
+
+          <Text style={styles.chevron}>
+            {clientPickerOpen ? '⌃' : '⌄'}
+          </Text>
         </Pressable>
 
         {clientPickerOpen && (
-          <View style={styles.clientPicker}>
+          <View style={styles.picker}>
             <Pressable
-              style={styles.clientOption}
+              style={styles.pickerOption}
               onPress={() => {
-                setSelectedClientId(undefined);
+                setSelectedClientId(
+                  undefined
+                );
                 setClientPickerOpen(false);
               }}
             >
-              <Text>
+              <Text
+                style={[
+                  styles.pickerText,
+                  !selectedClientId &&
+                    styles.pickerTextActive,
+                ]}
+              >
                 Без клиента
               </Text>
             </Pressable>
@@ -330,7 +377,7 @@ const [showTimePicker, setShowTimePicker] =
             {clients.map((client) => (
               <Pressable
                 key={client.id}
-                style={styles.clientOption}
+                style={styles.pickerOption}
                 onPress={() => {
                   setSelectedClientId(
                     client.id
@@ -339,204 +386,336 @@ const [showTimePicker, setShowTimePicker] =
                   setClientPickerOpen(false);
                 }}
               >
-                <Text>
+                <Text
+                  style={[
+                    styles.pickerText,
+                    selectedClientId ===
+                      client.id &&
+                      styles.pickerTextActive,
+                  ]}
+                >
                   {client.name}
                 </Text>
+
+                {client.phone && (
+                  <Text
+                    style={
+                      styles.pickerSubtext
+                    }
+                  >
+                    {client.phone}
+                  </Text>
+                )}
               </Pressable>
             ))}
 
             <Pressable
-            style={styles.createClientOption}
-            onPress={() => {
+              style={styles.createClientOption}
+              onPress={() => {
                 setClientPickerOpen(false);
 
                 router.push({
-                pathname: '/new-client',
-                params: {
+                  pathname:
+                    '/new-client',
+                  params: {
                     fromOrder: 'true',
-                },
+                  },
                 });
-            }}
+              }}
             >
-            <Text>
+              <Text
+                style={
+                  styles.createClientText
+                }
+              >
                 + Создать клиента
-            </Text>
+              </Text>
             </Pressable>
           </View>
         )}
 
-        <Text style={styles.label}>
-            Товары
+        {/* ТОВАРЫ */}
+
+        <Text
+          style={[
+            styles.sectionLabel,
+            styles.productsSectionLabel,
+          ]}
+        >
+          ТОВАРЫ
         </Text>
 
-        {products.map((product) => (
-          <Pressable
-            key={product.id}
-            style={styles.productOption}
-            onPress={() =>
-              addProductToOrder(product)
-            }
-          >
-            <Text style={styles.productName}>
-              {product.name}
-            </Text>
+        <View style={styles.productsList}>
+          {products.map((product) => (
+            <Pressable
+              key={product.id}
+              style={styles.productCard}
+              onPress={() =>
+                addProductToOrder(product)
+              }
+            >
+              <View style={styles.productInfo}>
+                <Text
+                  style={styles.productName}
+                >
+                  {product.name}
+                </Text>
 
-            <Text style={styles.productPrice}>
-              {product.price} ₸ /{' '}
-              {product.unit === 'piece'
-                ? 'шт.'
-                : 'порция'}
-            </Text>
-          </Pressable>
-        ))}
+                <Text
+                  style={styles.productPrice}
+                >
+                  {product.price} ₸ /{' '}
+                  {product.unit === 'piece'
+                    ? 'шт.'
+                    : 'порция'}
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.productAddButton
+                }
+              >
+                <Text
+                  style={
+                    styles.productAddText
+                  }
+                >
+                  +
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* В ЗАКАЗЕ */}
 
         {items.length > 0 && (
-          <View style={styles.items}>
-            <Text style={styles.label}>
-              В заказе
+          <View style={styles.selectedSection}>
+            <Text style={styles.sectionLabel}>
+              В ЗАКАЗЕ
             </Text>
 
-            {items.map((item) => (
-              <View key={item.product_id} style={styles.itemRow}>
-                <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>
-                    {item.name}
-                    </Text>
-
-                    <Text style={styles.itemDetails}>
-                    {item.price} ₸ /{' '}
-                    {item.unit === 'piece'
-                        ? 'шт.'
-                        : 'порция'}
-                    </Text>
-                </View>
-
-                <View style={styles.quantityControls}>
-                    <Pressable
-                    style={styles.quantityButton}
-                    onPress={() =>
-                        changeItemQuantity(
-                        item.product_id!,
-                        -1
-                        )
-                    }
+            <View
+              style={styles.selectedItemsCard}
+            >
+              {items.map(
+                (item, index) => (
+                  <View
+                    key={item.product_id}
+                    style={[
+                      styles.itemRow,
+                      index ===
+                        items.length - 1 &&
+                        styles.itemRowLast,
+                    ]}
+                  >
+                    <View
+                      style={styles.itemInfo}
                     >
-                    <Text style={styles.quantityButtonText}>
-                        −
-                    </Text>
-                    </Pressable>
+                      <Text
+                        style={styles.itemName}
+                      >
+                        {item.name}
+                      </Text>
 
-                    <Text style={styles.quantity}>
-                    {item.quantity}
-                    </Text>
+                      <Text
+                        style={
+                          styles.itemDetails
+                        }
+                      >
+                        {item.price} ₸ /{' '}
+                        {item.unit ===
+                        'piece'
+                          ? 'шт.'
+                          : 'порция'}
+                      </Text>
+                    </View>
 
-                    <Pressable
-                    style={styles.quantityButton}
-                    onPress={() =>
-                        changeItemQuantity(
-                        item.product_id!,
-                        1
-                        )
-                    }
+                    <View
+                      style={
+                        styles.quantityControls
+                      }
                     >
-                    <Text style={styles.quantityButtonText}>
-                        +
-                    </Text>
-                    </Pressable>
-                </View>
-                </View>
-            ))}
+                      <Pressable
+                        style={
+                          styles.quantityButton
+                        }
+                        onPress={() =>
+                          changeItemQuantity(
+                            item.product_id!,
+                            -1
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.quantityButtonText
+                          }
+                        >
+                          −
+                        </Text>
+                      </Pressable>
 
+                      <Text
+                        style={styles.quantity}
+                      >
+                        {item.quantity}
+                      </Text>
+
+                      <Pressable
+                        style={
+                          styles.quantityButton
+                        }
+                        onPress={() =>
+                          changeItemQuantity(
+                            item.product_id!,
+                            1
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.quantityButtonText
+                          }
+                        >
+                          +
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )
+              )}
+            </View>
           </View>
-
         )}
 
-        <Text style={styles.label}>
-          Дата заказа
-        </Text>
+        {/* ДАТА И ВРЕМЯ */}
 
-        <Pressable
-        style={styles.dateInput}
-        onPress={() => setShowDatePicker(true)}
+        <View
+          style={styles.dateTimeSection}
         >
-        <Text>
-            {orderDate || 'Выберите дату'}
-        </Text>
-        </Pressable>
+          <View style={styles.dateTimeColumn}>
+            <Text style={styles.sectionLabel}>
+              ДАТА
+            </Text>
+
+            <Pressable
+              style={styles.dateTimeButton}
+              onPress={() =>
+                setShowDatePicker(true)
+              }
+            >
+              <Text
+                style={[
+                  styles.dateTimeText,
+                  !orderDate &&
+                    styles.placeholderText,
+                ]}
+              >
+                {orderDate ||
+                  'Выберите дату'}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.dateTimeColumn}>
+            <Text style={styles.sectionLabel}>
+              ВРЕМЯ
+            </Text>
+
+            <Pressable
+              style={styles.dateTimeButton}
+              onPress={() =>
+                setShowTimePicker(true)
+              }
+            >
+              <Text
+                style={[
+                  styles.dateTimeText,
+                  !orderTime &&
+                    styles.placeholderText,
+                ]}
+              >
+                {orderTime ||
+                  'Выберите время'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
 
         {showDatePicker && (
-        <DateTimePicker
+          <DateTimePicker
             value={
-            orderDate
-                ? new Date(orderDate)
+              orderDate
+                ? new Date(
+                    `${orderDate}T00:00:00`
+                  )
                 : new Date()
             }
             mode="date"
             display="spinner"
             onChange={(event, date) => {
-            setShowDatePicker(false);
+              setShowDatePicker(false);
 
-            if (!date) {
+              if (!date) {
                 return;
-            }
+              }
 
-            const year = date.getFullYear();
-            const month = String(
+              const year =
+                date.getFullYear();
+
+              const month = String(
                 date.getMonth() + 1
-            ).padStart(2, '0');
-            const day = String(
-                date.getDate()
-            ).padStart(2, '0');
+              ).padStart(2, '0');
 
-            setOrderDate(
+              const day = String(
+                date.getDate()
+              ).padStart(2, '0');
+
+              setOrderDate(
                 `${year}-${month}-${day}`
-            );
+              );
             }}
-        />
+          />
         )}
 
-        <Text style={styles.label}>
-          Время
-        </Text>
-
-        <Pressable
-        style={styles.dateInput}
-        onPress={() => setShowTimePicker(true)}
-        >
-        <Text>
-            {orderTime || 'Выберите время'}
-        </Text>
-        </Pressable>
-
         {showTimePicker && (
-        <DateTimePicker
+          <DateTimePicker
             value={new Date()}
             mode="time"
             display="spinner"
             onChange={(event, date) => {
-            setShowTimePicker(false);
+              setShowTimePicker(false);
 
-            if (!date) {
+              if (!date) {
                 return;
-            }
+              }
 
-            const hours = String(
+              const hours = String(
                 date.getHours()
-            ).padStart(2, '0');
+              ).padStart(2, '0');
 
-            const minutes = String(
+              const minutes = String(
                 date.getMinutes()
-            ).padStart(2, '0');
+              ).padStart(2, '0');
 
-            setOrderTime(
+              setOrderTime(
                 `${hours}:${minutes}`
-            );
+              );
             }}
-        />
+          />
         )}
 
-        <Text style={styles.label}>
-          Скидка
+        {/* СКИДКА */}
+
+        <Text
+          style={[
+            styles.sectionLabel,
+            styles.discountSectionLabel,
+          ]}
+        >
+          СКИДКА
         </Text>
 
         <View style={styles.discountTypes}>
@@ -606,7 +785,9 @@ const [showTimePicker, setShowTimePicker] =
         </View>
 
         {discountType !== null && (
-          <View style={styles.discountInputRow}>
+          <View
+            style={styles.discountInputContainer}
+          >
             <TextInput
               style={styles.discountInput}
               value={discountValue}
@@ -617,9 +798,12 @@ const [showTimePicker, setShowTimePicker] =
                   ? 'Например, 10'
                   : 'Например, 2000'
               }
+              placeholderTextColor="#999999"
             />
 
-            <Text style={styles.discountSuffix}>
+            <Text
+              style={styles.discountSuffix}
+            >
               {discountType === 'PERCENT'
                 ? '%'
                 : '₸'}
@@ -627,46 +811,66 @@ const [showTimePicker, setShowTimePicker] =
           </View>
         )}
 
-        <View style={styles.totalBlock}>
-          <View style={styles.totalRow}>
-            <Text>Сумма</Text>
+        {/* ИТОГО */}
 
-            <Text>
-              {orderTotal} ₸
-            </Text>
-          </View>
+        <View style={styles.totalCard}>
+          {discountAmount > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>
+                Сумма товаров
+              </Text>
+
+              <Text style={styles.totalValue}>
+                {orderTotal} ₸
+              </Text>
+            </View>
+          )}
 
           {discountAmount > 0 && (
             <View style={styles.totalRow}>
-              <Text>Скидка</Text>
+              <Text style={styles.totalLabel}>
+                Скидка
+              </Text>
 
-              <Text>
+              <Text style={styles.discountValueText}>
                 −{discountAmount} ₸
               </Text>
             </View>
           )}
 
-          <View style={styles.totalRow}>
-            <Text style={styles.finalTotalLabel}>
+          <View
+            style={[
+              styles.totalRow,
+              discountAmount > 0 &&
+                styles.finalTotalRow,
+            ]}
+          >
+            <Text
+              style={styles.finalTotalLabel}
+            >
               Итого
             </Text>
 
-            <Text style={styles.finalTotal}>
+            <Text
+              style={styles.finalTotalValue}
+            >
               {finalTotal} ₸
             </Text>
           </View>
         </View>
 
+        {/* СОЗДАТЬ */}
+
         <Pressable
           style={[
-            styles.button,
+            styles.createButton,
             creating &&
-              styles.buttonDisabled,
+              styles.createButtonDisabled,
           ]}
           onPress={handleCreateOrder}
           disabled={creating}
         >
-          <Text style={styles.buttonText}>
+          <Text style={styles.createButtonText}>
             {creating
               ? 'Создаём...'
               : 'Создать заказ'}
@@ -679,45 +883,21 @@ const [showTimePicker, setShowTimePicker] =
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    padding: 24,
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
 
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-    },
-
-    quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    },
-
-    quantityButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#f1f1f1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    },
-
-    quantityButtonText: {
-    fontSize: 22,
-    lineHeight: 24,
-    },
-
-    quantity: {
-    minWidth: 36,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '600',
-    },
+  contentContainer: {
+    flexGrow: 1,
+    padding: 24,
+    paddingBottom: 30,
+  },
 
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
 
   header: {
@@ -726,197 +906,377 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
+  backButtonContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+
   backButton: {
     fontSize: 28,
+    lineHeight: 30,
+    color: '#111111',
   },
 
   headerSpacer: {
-    width: 28,
+    width: 32,
   },
 
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '700',
+    color: '#111111',
   },
 
   form: {
-    marginTop: 24,
+    marginTop: 28,
   },
 
-  label: {
+  sectionLabel: {
     marginBottom: 8,
+    fontSize: 12,
     fontWeight: '600',
+    letterSpacing: 0.6,
+    color: '#777777',
   },
 
-  clientSelector: {
+  selector: {
+    minHeight: 56,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    justifyContent: 'space-between',
   },
 
-  dateInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+  selectorText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111111',
   },
 
-  clientPicker: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    marginBottom: 12,
+  selectorSubtext: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#888888',
+  },
+
+  placeholderText: {
+    color: '#999999',
+  },
+
+  chevron: {
+    fontSize: 20,
+    color: '#777777',
+  },
+
+  picker: {
+    marginTop: 8,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
     overflow: 'hidden',
   },
 
-  clientOption: {
-    padding: 12,
+  pickerOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#EAEAEA',
+  },
+
+  pickerText: {
+    fontSize: 15,
+    color: '#555555',
+  },
+
+  pickerTextActive: {
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  pickerSubtext: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#888888',
   },
 
   createClientOption: {
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
   },
 
-  productOption: {
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    marginBottom: 8,
+  createClientText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  productsSectionLabel: {
+    marginTop: 28,
+  },
+
+  productsList: {
+    gap: 8,
+  },
+
+  productCard: {
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  productInfo: {
+    flex: 1,
+    marginRight: 12,
   },
 
   productName: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#111111',
   },
 
   productPrice: {
     marginTop: 4,
-    opacity: 0.6,
+    fontSize: 13,
+    color: '#888888',
   },
 
-  items: {
-    marginTop: 16,
+  productAddButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  productAddText: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    lineHeight: 23,
+    fontWeight: '300',
+  },
+
+  selectedSection: {
+    marginTop: 28,
+  },
+
+  selectedItemsCard: {
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
   },
 
   itemRow: {
+    minHeight: 68,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#EAEAEA',
+  },
+
+  itemRowLast: {
+    borderBottomWidth: 0,
+  },
+
+  itemInfo: {
+    flex: 1,
+    marginRight: 12,
   },
 
   itemName: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#111111',
   },
 
   itemDetails: {
     marginTop: 4,
-    opacity: 0.6,
+    fontSize: 13,
+    color: '#888888',
   },
 
-  removeText: {
-    color: '#d33',
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  quantityButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#EAEAEA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  quantityButtonText: {
+    fontSize: 21,
+    lineHeight: 24,
+    color: '#111111',
+  },
+
+  quantity: {
+    minWidth: 36,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  dateTimeSection: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 28,
+  },
+
+  dateTimeColumn: {
+    flex: 1,
+  },
+
+  dateTimeButton: {
+    minHeight: 52,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+  },
+
+  dateTimeText: {
+    fontSize: 15,
+    color: '#111111',
+  },
+
+  discountSectionLabel: {
+    marginTop: 28,
   },
 
   discountTypes: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
   },
 
   discountTypeButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#F7F7F7',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 
   discountTypeButtonActive: {
-    backgroundColor: '#208AEF',
-    borderColor: '#208AEF',
+    backgroundColor: '#111111',
   },
 
   discountTypeText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    color: '#666666',
   },
 
   discountTypeTextActive: {
-    color: '#fff',
+    color: '#FFFFFF',
   },
 
-  discountInputRow: {
+  discountInputContainer: {
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
 
   discountInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
     fontSize: 16,
+    color: '#111111',
   },
 
   discountSuffix: {
-    marginLeft: 10,
+    width: 36,
+    marginLeft: 8,
     fontSize: 16,
     fontWeight: '600',
+    color: '#555555',
+    textAlign: 'center',
   },
 
-  totalBlock: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+  totalCard: {
+    marginTop: 28,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
   },
 
   totalRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+
+  finalTotalRow: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E2E2',
+  },
+
+  totalLabel: {
+    fontSize: 14,
+    color: '#777777',
+  },
+
+  totalValue: {
+    fontSize: 14,
+    color: '#555555',
+  },
+
+  discountValueText: {
+    fontSize: 14,
+    color: '#A33A3A',
   },
 
   finalTotalLabel: {
     fontSize: 18,
     fontWeight: '700',
+    color: '#111111',
   },
 
-  finalTotal: {
+  finalTotalValue: {
     fontSize: 20,
     fontWeight: '700',
+    color: '#111111',
   },
 
-  button: {
-    marginTop: 24,
-    backgroundColor: '#208AEF',
-    borderRadius: 12,
-    padding: 15,
+  createButton: {
+    marginTop: 16,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#111111',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  buttonDisabled: {
+  createButtonDisabled: {
     opacity: 0.6,
   },
 
-  buttonText: {
-    color: '#fff',
+  createButtonText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

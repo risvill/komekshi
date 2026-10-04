@@ -5,4 +5,5 @@ export type Client = {
   email: string | null;
   address: string | null;
   notes: string | null;
+  completed_orders_count: number;
 };
