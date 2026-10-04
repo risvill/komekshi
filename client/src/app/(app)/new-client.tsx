@@ -5,6 +5,7 @@ import {
 import { useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 
 import * as Contacts from 'expo-contacts';
+import { Feather } from '@expo/vector-icons';
 
 import { useAuth } from '@/context/AuthContext';
 import { createClient } from '@/services/clientsService';
@@ -61,7 +63,7 @@ export default function NewClient() {
           },
         });
       } else {
-        router.back();
+        router.replace('/clients');
       }
     } catch (error) {
       console.error(error);
@@ -76,7 +78,7 @@ export default function NewClient() {
   };
 
   const handlePickContact = async () => {
-    if (!token) {
+    if (!token || creating) {
       return;
     }
 
@@ -153,209 +155,333 @@ export default function NewClient() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      style={styles.container}
+      contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() =>
+            router.replace('/clients')
+          }
+          hitSlop={8}
+          style={styles.backButtonContainer}
         >
-          <Text style={styles.back}>
-            ‹
+          <Text style={styles.backButton}>
+            ←
           </Text>
         </Pressable>
 
-        <Text style={styles.title}>
-          Новый клиент
-        </Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>
+            Новый клиент
+          </Text>
 
-        <View style={styles.headerSpacer} />
+          <Text style={styles.subtitle}>
+            Добавьте клиента в Komekshi
+          </Text>
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>
-        Добавить из контактов
+        ИЗ КОНТАКТОВ
       </Text>
 
       <Pressable
-        style={styles.contactButton}
+        style={[
+          styles.contactCard,
+          creating &&
+            styles.disabledCard,
+        ]}
         onPress={handlePickContact}
         disabled={creating}
       >
-        <Text style={styles.contactIcon}>
-          +
-        </Text>
+        <View style={styles.contactIcon}>
+          <Text style={styles.contactIconText}>
+            +
+          </Text>
+        </View>
 
-        <View style={styles.contactText}>
+        <View style={styles.contactInfo}>
           <Text style={styles.contactTitle}>
             Выбрать контакт
           </Text>
 
           <Text style={styles.contactSubtitle}>
-            Имя и телефон будут заполнены автоматически
+            Имя и телефон заполнятся автоматически
           </Text>
         </View>
+
+        <Text style={styles.arrow}>
+          ›
+        </Text>
       </Pressable>
 
-      <View style={styles.divider}>
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+
         <Text style={styles.dividerText}>
-          или создать вручную
+          ИЛИ ВРУЧНУЮ
         </Text>
+
+        <View style={styles.dividerLine} />
       </View>
 
-      <Text style={styles.label}>
-        Имя
-      </Text>
+      <View style={styles.formCard}>
+  <Text style={styles.formTitle}>
+    Данные клиента
+  </Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Имя клиента"
-        value={name}
-        onChangeText={setName}
-      />
+  <View style={styles.field}>
+    <Feather
+      name="user"
+      size={19}
+      color="#777777"
+      style={styles.fieldIcon}
+      accessible={false}
+    />
+    <TextInput
+      style={styles.input}
+      placeholder="Имя клиента"
+      placeholderTextColor="#999999"
+      value={name}
+      onChangeText={setName}
+      editable={!creating}
+      autoCapitalize="words"
+    />
+  </View>
 
-      <Text style={styles.label}>
-        Телефон
-      </Text>
+  <View style={styles.field}>
+    <Feather
+      name="phone"
+      size={18}
+      color="#777777"
+      style={styles.fieldIcon}
+      accessible={false}
+    />
+    <TextInput
+      style={styles.input}
+      placeholder="+7 777 123 45 67"
+      placeholderTextColor="#999999"
+      value={phone}
+      onChangeText={setPhone}
+      keyboardType="phone-pad"
+      editable={!creating}
+    />
+  </View>
+</View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="+7 777 123 45 67"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-      />
-
-      <Pressable
-        style={[
-          styles.createButton,
-          creating &&
-            styles.buttonDisabled,
-        ]}
-        onPress={handleCreate}
-        disabled={creating}
-      >
-        <Text style={styles.createButtonText}>
-          {creating
-            ? 'Сохраняем...'
-            : 'Создать клиента'}
-        </Text>
-      </Pressable>
+<Pressable
+  style={[
+    styles.createButton,
+    creating && styles.buttonDisabled,
+  ]}
+  onPress={() => void handleCreate()}
+  disabled={creating}
+>
+  {creating ? (
+    <ActivityIndicator
+      color="#FFFFFF"
+      size="small"
+    />
+  ) : (
+    <Text style={styles.createButtonText}>
+      Создать клиента
+    </Text>
+  )}
+</Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+
+  content: {
     padding: 24,
+    paddingBottom: 40,
   },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  backButtonContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
   },
 
-  back: {
-    fontSize: 38,
-    lineHeight: 38,
+
+  backButton: {
+    fontSize: 20,
+    lineHeight: 30,
+    color: '#111111',
+  },
+
+  headerText: {
+    alignItems: 'center',
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
+    color: '#111111',
   },
 
-  headerSpacer: {
-    width: 30,
+  subtitle: {
+    marginTop: 5,
+    fontSize: 15,
+    color: '#777777',
+    textAlign: 'center',
   },
 
   sectionTitle: {
     marginTop: 32,
-    fontSize: 18,
-    fontWeight: '600',
+    marginBottom: 10,
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.8,
   },
 
-  contactButton: {
-    marginTop: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#208AEF',
-    borderRadius: 14,
+  contactCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#F7F7F7',
+    borderRadius: 16,
+    padding: 16,
+  },
+
+  disabledCard: {
+    opacity: 0.6,
   },
 
   contactIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#208AEF',
-    color: '#fff',
-    fontSize: 28,
-    textAlign: 'center',
-    lineHeight: 38,
-    marginRight: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  contactIconText: {
+    fontSize: 27,
+    fontWeight: '300',
+    color: '#208AEF',
+    lineHeight: 30,
+  },
+
+  contactInfo: {
+    flex: 1,
+    paddingRight: 10,
   },
 
   contactTitle: {
     fontSize: 16,
     fontWeight: '600',
-  },
-
-  contactText: {
-    flex: 1,
-    minWidth: 0,
+    color: '#111111',
   },
 
   contactSubtitle: {
     marginTop: 4,
     fontSize: 13,
-    opacity: 0.5,
-    flexShrink: 1,
+    lineHeight: 18,
+    color: '#777777',
   },
 
-  divider: {
-    marginTop: 20,
-    marginBottom: 10,
+  arrow: {
+    fontSize: 27,
+    lineHeight: 30,
+    color: '#777777',
+  },
+
+  dividerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 26,
+  },
+
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E8E8E8',
   },
 
   dividerText: {
-    fontSize: 14,
-    opacity: 0.5,
+    marginHorizontal: 12,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#999999',
+    letterSpacing: 0.7,
   },
 
-  label: {
-    marginTop: 14,
-    marginBottom: 7,
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  formCard: {
+  backgroundColor: '#F7F7F7',
+  borderRadius: 16,
+  padding: 19,
+    paddingBottom: 8,
+},
 
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-  },
+formTitle: {
+  fontSize: 18,
+  lineHeight: 23,
+  fontWeight: '700',
+  color: '#111111',
+  marginBottom: 20,
+},
 
-  createButton: {
-    marginTop: 28,
-    backgroundColor: '#208AEF',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
+field: {
+  minHeight: 54,
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 16,
+  paddingHorizontal: 14,
+  borderRadius: 12,
+  backgroundColor: '#FFFFFF',
+},
 
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+fieldIcon: {
+  marginRight: 12,
+},
 
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+input: {
+  flex: 1,
+  minWidth: 0,
+  height: 52,
+  paddingHorizontal: 0,
+  fontSize: 15,
+  color: '#111111',
+},
+
+createButton: {
+  marginTop: 20,
+  minHeight: 52,
+  backgroundColor: '#111111',
+  borderRadius: 12,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+buttonDisabled: {
+  opacity: 0.55,
+},
+
+createButtonText: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#FFFFFF',
+},
 });

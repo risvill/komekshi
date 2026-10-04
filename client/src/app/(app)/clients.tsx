@@ -28,6 +28,8 @@ export default function Clients() {
     }
 
     try {
+      setLoading(true);
+
       const data = await getClients(token);
       setClients(data);
     } catch (error) {
@@ -52,7 +54,8 @@ export default function Clients() {
 
     return clients.filter((client) => {
       const name = client.name.toLowerCase();
-      const phone = client.phone?.toLowerCase() || '';
+      const phone =
+        client.phone?.toLowerCase() || '';
 
       return (
         name.includes(searchValue) ||
@@ -70,7 +73,12 @@ export default function Clients() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>
@@ -78,7 +86,8 @@ export default function Clients() {
           </Text>
 
           <Text style={styles.count}>
-            {clients.length} клиентов
+            {clients.length}{' '}
+            {getClientCountLabel(clients.length)}
           </Text>
         </View>
 
@@ -87,6 +96,7 @@ export default function Clients() {
           onPress={() =>
             router.push('/new-client')
           }
+          hitSlop={8}
         >
           <Text style={styles.addButtonText}>
             +
@@ -97,23 +107,69 @@ export default function Clients() {
       <TextInput
         style={styles.searchInput}
         placeholder="Поиск клиента"
+        placeholderTextColor="#999999"
         value={search}
         onChangeText={setSearch}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
       />
 
-      <View style={styles.list}>
-        {filteredClients.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>
-              Клиентов нет
-            </Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>
+          {search.trim()
+            ? 'РЕЗУЛЬТАТЫ ПОИСКА'
+            : 'ВСЕ КЛИЕНТЫ'}
+        </Text>
 
-            <Text style={styles.emptyText}>
-              Добавьте первого клиента
+        {search.trim() &&
+          filteredClients.length > 0 && (
+            <Text style={styles.resultCount}>
+              {filteredClients.length}
+            </Text>
+          )}
+      </View>
+
+      {filteredClients.length === 0 ? (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyIconText}>
+              +
             </Text>
           </View>
-        ) : (
-          filteredClients.map((client) => (
+
+          <Text style={styles.emptyTitle}>
+            {search.trim()
+              ? 'Ничего не найдено'
+              : 'Клиентов пока нет'}
+          </Text>
+
+          <Text style={styles.emptyText}>
+            {search.trim()
+              ? 'Попробуйте изменить запрос'
+              : 'Добавьте первого клиента'}
+          </Text>
+
+          {!search.trim() && (
+            <Pressable
+              style={styles.emptyButton}
+              onPress={() =>
+                router.push('/new-client')
+              }
+            >
+              <Text
+                style={
+                  styles.emptyButtonText
+                }
+              >
+                Добавить клиента
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      ) : (
+        <View style={styles.clientsList}>
+          {filteredClients.map((client) => (
             <Pressable
               key={client.id}
               style={styles.clientCard}
@@ -126,46 +182,106 @@ export default function Clients() {
                 })
               }
             >
+              <View style={styles.clientAvatar}>
+                <Text
+                  style={styles.clientAvatarText}
+                >
+                  {getInitials(client.name)}
+                </Text>
+              </View>
+
               <View style={styles.clientInfo}>
-                <Text style={styles.clientName}>
+                <Text
+                  style={styles.clientName}
+                  numberOfLines={1}
+                >
                   {client.name}
                 </Text>
 
-                {client.phone && (
-                  <Text style={styles.clientPhone}>
-                    {formatPhoneNumber(client.phone)}
+                {client.phone ? (
+                  <Text
+                    style={styles.clientPhone}
+                  >
+                    {formatPhoneNumber(
+                      client.phone
+                    )}
+                  </Text>
+                ) : (
+                  <Text
+                    style={
+                      styles.noPhoneText
+                    }
+                  >
+                    Телефон не указан
                   </Text>
                 )}
 
-                <Text style={styles.orderCount}>
-                  Заказов:{' '}
-                  {client.completed_orders_count}
-                </Text>
+                <View
+                  style={
+                    styles.clientMeta
+                  }
+                >
+                  <Text
+                    style={
+                      styles.orderCount
+                    }
+                  >
+                    {getOrderCountText(
+                      client.completed_orders_count
+                    )}
+                  </Text>
+                </View>
               </View>
 
               <Text style={styles.arrow}>
                 ›
               </Text>
             </Pressable>
-          ))
-        )}
-      </View>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
-function formatPhoneNumber(phone: string): string {
+function getInitials(name: string) {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return '?';
+  }
+
+  if (parts.length === 1) {
+    return parts[0]
+      .slice(0, 1)
+      .toUpperCase();
+  }
+
+  return (
+    parts[0].slice(0, 1) +
+    parts[1].slice(0, 1)
+  ).toUpperCase();
+}
+
+function formatPhoneNumber(phone: string) {
   const digits = phone.replace(/\D/g, '');
 
   let normalized = digits;
 
-  if (normalized.startsWith('8') && normalized.length === 11) {
-    normalized = '7' + normalized.slice(1);
+  if (
+    normalized.startsWith('8') &&
+    normalized.length === 11
+  ) {
+    normalized =
+      '7' + normalized.slice(1);
   } else if (
     normalized.startsWith('7') &&
     normalized.length === 11
   ) {
-    // Already in international Kazakhstan format.
+    // Already normalized.
   } else if (normalized.length === 10) {
     normalized = '7' + normalized;
   }
@@ -174,120 +290,275 @@ function formatPhoneNumber(phone: string): string {
     normalized.length === 11 &&
     normalized.startsWith('7')
   ) {
-    return `+7 ${normalized.slice(1, 4)} ${normalized.slice(
+    return `+7 ${normalized.slice(
+      1,
+      4
+    )} ${normalized.slice(
       4,
       7
-    )} ${normalized.slice(7, 9)} ${normalized.slice(9, 11)}`;
+    )} ${normalized.slice(
+      7,
+      9
+    )} ${normalized.slice(9, 11)}`;
   }
 
   return phone;
 }
 
+function getOrderCountText(count: number) {
+  if (count === 0) {
+    return '0 заказов';
+  }
+
+  const lastTwo = count % 100;
+  const lastOne = count % 10;
+
+  if (
+    lastTwo >= 11 &&
+    lastTwo <= 14
+  ) {
+    return `${count} заказов`;
+  }
+
+  if (lastOne === 1) {
+    return `${count} заказ`;
+  }
+
+  if (
+    lastOne >= 2 &&
+    lastOne <= 4
+  ) {
+    return `${count} заказа`;
+  }
+
+  return `${count} заказов`;
+}
+
+function getClientCountLabel(count: number) {
+  const lastTwo = count % 100;
+  const lastOne = count % 10;
+
+  if (
+    lastTwo >= 11 &&
+    lastTwo <= 14
+  ) {
+    return 'клиентов';
+  }
+
+  if (lastOne === 1) {
+    return 'клиент';
+  }
+
+  if (
+    lastOne >= 2 &&
+    lastOne <= 4
+  ) {
+    return 'клиента';
+  }
+
+  return 'клиентов';
+}
+
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+
+  content: {
     padding: 24,
+    paddingBottom: 40,
   },
 
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
 
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
   },
 
   title: {
     fontSize: 32,
     fontWeight: '700',
+    color: '#111111',
   },
 
   count: {
-    marginTop: 8,
-    opacity: 0.6,
+    marginTop: 5,
+    fontSize: 15,
+    color: '#777777',
   },
 
   addButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#208AEF',
-    justifyContent: 'center',
+    backgroundColor: '#111111',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 
   addButtonText: {
-    color: '#fff',
-    fontSize: 28,
-    lineHeight: 30,
+    color: '#FFFFFF',
+    fontSize: 29,
+    lineHeight: 32,
+    fontWeight: '300',
   },
 
   searchInput: {
-    marginTop: 24,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
+    height: 50,
+    backgroundColor: '#F7F7F7',
+    borderRadius: 16,
+    paddingHorizontal: 16,
     fontSize: 15,
+    color: '#111111',
   },
 
-  list: {
-    marginTop: 16,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.8,
+  },
+
+  resultCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999999',
+  },
+
+  clientsList: {
+    gap: 10,
   },
 
   clientCard: {
-    marginTop: 10,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#F7F7F7',
+    borderRadius: 16,
+    padding: 16,
+  },
+
+  clientAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  clientAvatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333333',
   },
 
   clientInfo: {
     flex: 1,
+    minWidth: 0,
   },
 
   clientName: {
     fontSize: 17,
     fontWeight: '600',
+    color: '#111111',
   },
 
   clientPhone: {
-    marginTop: 5,
-    opacity: 0.6,
+    marginTop: 4,
+    fontSize: 14,
+    color: '#666666',
+  },
+
+  noPhoneText: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#999999',
+  },
+
+  clientMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
   },
 
   orderCount: {
-    marginTop: 5,
-    fontSize: 13,
-    opacity: 0.6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#888888',
   },
 
   arrow: {
     fontSize: 28,
-    opacity: 0.4,
-    marginLeft: 12,
+    lineHeight: 32,
+    color: '#777777',
+    marginLeft: 10,
   },
 
   emptyState: {
-    paddingVertical: 60,
     alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+  },
+
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+
+  emptyIconText: {
+    fontSize: 28,
+    fontWeight: '300',
+    color: '#888888',
   },
 
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '600',
+    color: '#111111',
   },
 
   emptyText: {
-    marginTop: 8,
-    opacity: 0.5,
+    marginTop: 7,
+    fontSize: 14,
+    color: '#888888',
+    textAlign: 'center',
+  },
+
+  emptyButton: {
+    marginTop: 20,
+    backgroundColor: '#111111',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -151,7 +151,7 @@ export default function SelectProduct() {
 
         <View style={styles.header}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => router.replace('/new-order')}
             hitSlop={8}
             style={styles.backButtonContainer}
           >
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    fontSize: 28,
+    fontSize: 20,
     lineHeight: 30,
     color: '#111111',
   },
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: '#111111',
   },
