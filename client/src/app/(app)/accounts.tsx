@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { useAuth } from '@/context/AuthContext';
 
@@ -29,25 +29,24 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [showCreate, setShowCreate] =
-    useState(false);
+  // CREATE
+  const [showCreate, setShowCreate] = useState(false);
 
   const [name, setName] = useState('');
-  const [type, setType] =
-    useState<AccountType>('KASPI');
+  const [type, setType] = useState<AccountType>('KASPI');
 
-  const [saving, setSaving] =
-    useState(false);
+  // EDIT
+  const [editingAccount, setEditingAccount] =
+    useState<Account | null>(null);
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
-
-  const [editingName, setEditingName] =
-    useState('');
+  const [editingName, setEditingName] = useState('');
 
   const [editingType, setEditingType] =
     useState<AccountType>('KASPI');
 
+  const [saving, setSaving] = useState(false);
+
+  // DELETE
   const [deletingAccount, setDeletingAccount] =
     useState<Account | null>(null);
 
@@ -57,8 +56,7 @@ export default function Accounts() {
   const [showCreateReplacement, setShowCreateReplacement] =
     useState(false);
 
-  const [replacementName, setReplacementName] =
-    useState('');
+  const [replacementName, setReplacementName] = useState('');
 
   const [replacementType, setReplacementType] =
     useState<AccountType>('KASPI');
@@ -99,6 +97,24 @@ export default function Accounts() {
     }, [token])
   );
 
+  // -----------------------------
+  // CREATE ACCOUNT
+  // -----------------------------
+
+  const openCreateModal = () => {
+    setName('');
+    setType('KASPI');
+    setShowCreate(true);
+  };
+
+  const closeCreateModal = () => {
+    if (saving) return;
+
+    setShowCreate(false);
+    setName('');
+    setType('KASPI');
+  };
+
   const handleCreate = async () => {
     if (!token) return;
 
@@ -127,9 +143,9 @@ export default function Accounts() {
         ...current,
       ]);
 
+      setShowCreate(false);
       setName('');
       setType('KASPI');
-      setShowCreate(false);
     } catch (error) {
       console.error(
         'Failed to create account:',
@@ -145,24 +161,30 @@ export default function Accounts() {
     }
   };
 
-  const startEditing = (
+  // -----------------------------
+  // EDIT ACCOUNT
+  // -----------------------------
+
+  const openEditModal = (
     account: Account
   ) => {
-    setEditingId(account.id);
+    setEditingAccount(account);
     setEditingName(account.name);
     setEditingType(account.type);
   };
 
-  const cancelEditing = () => {
-    setEditingId(null);
+  const closeEditModal = () => {
+    if (saving) return;
+
+    setEditingAccount(null);
     setEditingName('');
     setEditingType('KASPI');
   };
 
-  const handleUpdate = async (
-    accountId: string
-  ) => {
-    if (!token) return;
+  const handleUpdate = async () => {
+    if (!token || !editingAccount) {
+      return;
+    }
 
     if (!editingName.trim()) {
       Alert.alert(
@@ -178,7 +200,7 @@ export default function Accounts() {
 
       const updated = await updateAccount(
         token,
-        accountId,
+        editingAccount.id,
         {
           name: editingName.trim(),
           type: editingType,
@@ -187,13 +209,15 @@ export default function Accounts() {
 
       setAccounts((current) =>
         current.map((account) =>
-          account.id === accountId
+          account.id === editingAccount.id
             ? updated
             : account
         )
       );
 
-      cancelEditing();
+      setEditingAccount(null);
+      setEditingName('');
+      setEditingType('KASPI');
     } catch (error) {
       console.error(
         'Failed to update account:',
@@ -209,17 +233,20 @@ export default function Accounts() {
     }
   };
 
+  // -----------------------------
+  // DELETE ACCOUNT
+  // -----------------------------
+
   const startDelete = (
     account: Account
   ) => {
-    const activeOtherAccounts =
+    const otherAccounts =
       accounts.filter(
         (item) =>
-          item.id !== account.id &&
-          item.is_active
+          item.id !== account.id
       );
 
-    if (activeOtherAccounts.length === 0) {
+    if (otherAccounts.length === 0) {
       Alert.alert(
         'Нельзя удалить счёт',
         'Сначала создайте другой счёт, на который можно будет перенести платежи.',
@@ -231,7 +258,7 @@ export default function Accounts() {
           {
             text: 'Создать счёт',
             onPress: () => {
-              setShowCreate(true);
+              openCreateModal();
             },
           },
         ]
@@ -353,12 +380,11 @@ export default function Accounts() {
       }
     };
 
-  const otherActiveAccounts =
+  const otherAccounts =
     accounts.filter(
       (account) =>
         account.id !==
-          deletingAccount?.id &&
-        account.is_active
+        deletingAccount?.id
     );
 
   const totalBalance = accounts.reduce(
@@ -374,57 +400,272 @@ export default function Accounts() {
         contentContainerStyle={
           styles.content
         }
+        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* HEADER */}
+
         <View style={styles.header}>
-          <Text style={styles.title}>
+          <Pressable
+            onPress={() =>
+              router.replace('/more')
+            }
+            hitSlop={8}
+            style={styles.backButtonContainer}
+          >
+            <Text style={styles.backButton}>
+              ←
+            </Text>
+          </Pressable>
+
+          <Text style={styles.headerTitle}>
             Счета
           </Text>
 
           <Pressable
             style={styles.addButton}
-            onPress={() =>
-              setShowCreate(
-                (current) => !current
-              )
-            }
+            onPress={openCreateModal}
             accessibilityRole="button"
-            accessibilityLabel={
-              showCreate
-                ? 'Закрыть форму'
-                : 'Добавить счёт'
-            }
+            accessibilityLabel="Добавить счёт"
           >
             <Text style={styles.addButtonText}>
-              {showCreate ? '×' : '+'}
+              +
             </Text>
           </Pressable>
         </View>
+
+        {/* TOTAL */}
 
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>
             Всего на счетах
           </Text>
+
           <Text style={styles.totalAmount}>
-            {totalBalance.toLocaleString('ru-RU')} ₸
+            {totalBalance.toLocaleString(
+              'ru-RU'
+            )}{' '}
+            ₸
           </Text>
         </View>
 
-        {showCreate && (
-          <View style={styles.form}>
-            <Text style={styles.formTitle}>
-              Новый счёт
+        {/* ACCOUNTS */}
+
+        <Text style={styles.sectionTitle}>
+          МОИ СЧЕТА
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator
+            style={styles.loader}
+          />
+        ) : accounts.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>
+              Счетов пока нет
+            </Text>
+
+            <Text style={styles.emptyText}>
+              Добавьте первый счёт, чтобы
+              учитывать поступления и оплаты.
+            </Text>
+
+            <Pressable
+              style={styles.emptyButton}
+              onPress={openCreateModal}
+            >
+              <Text
+                style={styles.emptyButtonText}
+              >
+                Добавить счёт
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          accounts.map((account) => (
+            <View
+              key={account.id}
+              style={styles.accountRow}
+            >
+              <View
+                style={
+                  styles.accountSummary
+                }
+              >
+                <View
+                  style={
+                    styles.accountDetails
+                  }
+                >
+                  <Text
+                    style={
+                      styles.accountName
+                    }
+                  >
+                    {account.name}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.accountType
+                    }
+                  >
+                    {account.type ===
+                    'KASPI'
+                      ? 'Kaspi'
+                      : 'Наличные'}
+                  </Text>
+                </View>
+
+                <Text
+                  style={
+                    styles.accountBalance
+                  }
+                >
+                  {Number(
+                    account.balance || 0
+                  ).toLocaleString(
+                    'ru-RU'
+                  )}{' '}
+                  ₸
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.accountActions
+                }
+              >
+                <Pressable
+                  onPress={() =>
+                    openEditModal(account)
+                  }
+                  style={
+                    styles.smallAction
+                  }
+                >
+                  <Text
+                    style={styles.editText}
+                  >
+                    Изменить
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() =>
+                    startDelete(account)
+                  }
+                  style={
+                    styles.smallAction
+                  }
+                >
+                  <Text
+                    style={styles.deleteText}
+                  >
+                    Удалить
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* ================================= */}
+      {/* CREATE ACCOUNT BOTTOM SHEET       */}
+      {/* ================================= */}
+
+      <Modal
+        visible={showCreate}
+        transparent
+        animationType="slide"
+        onRequestClose={
+          closeCreateModal
+        }
+      >
+        <View
+          style={
+            styles.bottomSheetOverlay
+          }
+        >
+          <Pressable
+            style={
+              styles.bottomSheetBackdrop
+            }
+            onPress={closeCreateModal}
+            disabled={saving}
+          />
+
+          <View
+            style={styles.bottomSheet}
+          >
+            <View
+              style={styles.sheetHandle}
+            />
+
+            <View
+              style={styles.sheetHeader}
+            >
+              <View>
+                <Text
+                  style={styles.sheetTitle}
+                >
+                  Новый счёт
+                </Text>
+
+                <Text
+                  style={styles.sheetSubtitle}
+                >
+                  Добавьте счёт для учёта оплат
+                </Text>
+              </View>
+
+              <Pressable
+                style={
+                  styles.sheetCloseButton
+                }
+                onPress={closeCreateModal}
+                disabled={saving}
+              >
+                <Text
+                  style={
+                    styles.sheetCloseText
+                  }
+                >
+                  ×
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text
+              style={styles.inputLabel}
+            >
+              НАЗВАНИЕ СЧЁТА
             </Text>
 
             <TextInput
               style={styles.input}
-              placeholder="Название счёта"
+              placeholder="Например, Kaspi Business"
+              placeholderTextColor="#999999"
               value={name}
               onChangeText={setName}
               editable={!saving}
+              autoCapitalize="sentences"
+              autoFocus
             />
 
-            <View style={styles.typeRow}>
+            <Text
+              style={[
+                styles.inputLabel,
+                styles.typeLabel,
+              ]}
+            >
+              ТИП СЧЁТА
+            </Text>
+
+            <View
+              style={styles.typeRow}
+            >
               {(
                 ['KASPI', 'CASH'] as const
               ).map((accountType) => {
@@ -472,229 +713,224 @@ export default function Accounts() {
               }
               disabled={saving}
             >
-              <Text style={styles.saveButtonText}>
-                {saving
-                  ? 'Сохранение...'
-                  : 'Создать счёт'}
+              {saving ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#FFFFFF"
+                />
+              ) : (
+                <Text
+                  style={
+                    styles.saveButtonText
+                  }
+                >
+                  Создать счёт
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={
+                styles.sheetCancelButton
+              }
+              onPress={closeCreateModal}
+              disabled={saving}
+            >
+              <Text
+                style={
+                  styles.sheetCancelText
+                }
+              >
+                Отмена
               </Text>
             </Pressable>
           </View>
-        )}
+        </View>
+      </Modal>
 
-        {loading ? (
-          <ActivityIndicator
-            style={styles.loader}
+      {/* ================================= */}
+      {/* EDIT ACCOUNT BOTTOM SHEET         */}
+      {/* ================================= */}
+
+      <Modal
+        visible={editingAccount !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={
+          closeEditModal
+        }
+      >
+        <View
+          style={
+            styles.bottomSheetOverlay
+          }
+        >
+          <Pressable
+            style={
+              styles.bottomSheetBackdrop
+            }
+            onPress={closeEditModal}
+            disabled={saving}
           />
-        ) : accounts.length === 0 ? (
-          <Text style={styles.emptyText}>
-            Счетов пока нет
-          </Text>
-        ) : (
-          accounts.map((account) => {
-            const isEditing =
-              editingId === account.id;
 
-            return (
-              <View
-                key={account.id}
-                style={styles.accountRow}
-              >
-                {isEditing ? (
-                  <View
-                    style={
-                      styles.editAccountContainer
-                    }
-                  >
-                    <Text style={styles.formTitle}>
-                      Изменить счёт
-                    </Text>
+          <View
+            style={styles.bottomSheet}
+          >
+            <View
+              style={styles.sheetHandle}
+            />
 
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Название счёта"
-                      value={editingName}
-                      onChangeText={
-                        setEditingName
-                      }
-                      editable={!saving}
-                    />
+            <View
+              style={styles.sheetHeader}
+            >
+              <View>
+                <Text
+                  style={styles.sheetTitle}
+                >
+                  Изменить счёт
+                </Text>
 
-                    <View
-                      style={styles.typeRow}
-                    >
-                      {(
-                        [
-                          'KASPI',
-                          'CASH',
-                        ] as const
-                      ).map(
-                        (accountType) => {
-                          const selected =
-                            editingType ===
-                            accountType;
-
-                          return (
-                            <Pressable
-                              key={
-                                accountType
-                              }
-                              style={[
-                                styles.typeButton,
-                                selected &&
-                                  styles.typeButtonSelected,
-                              ]}
-                              onPress={() =>
-                                setEditingType(
-                                  accountType
-                                )
-                              }
-                              disabled={saving}
-                            >
-                              <Text
-                                style={[
-                                  styles.typeButtonText,
-                                  selected &&
-                                    styles.typeButtonTextSelected,
-                                ]}
-                              >
-                                {accountType ===
-                                'KASPI'
-                                  ? 'Kaspi'
-                                  : 'Наличные'}
-                              </Text>
-                            </Pressable>
-                          );
-                        }
-                      )}
-                    </View>
-
-                    <View
-                      style={
-                        styles.editActions
-                      }
-                    >
-                      <Pressable
-                        style={
-                          styles.cancelButton
-                        }
-                        onPress={
-                          cancelEditing
-                        }
-                        disabled={saving}
-                      >
-                        <Text
-                          style={
-                            styles.cancelButtonText
-                          }
-                        >
-                          Отмена
-                        </Text>
-                      </Pressable>
-
-                      <Pressable
-                        style={[
-                          styles.saveButton,
-                          saving &&
-                            styles.disabledButton,
-                        ]}
-                        onPress={() =>
-                          void handleUpdate(
-                            account.id
-                          )
-                        }
-                        disabled={saving}
-                      >
-                        <Text
-                          style={
-                            styles.saveButtonText
-                          }
-                        >
-                          {saving
-                            ? 'Сохранение...'
-                            : 'Сохранить'}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <>
-                    <View style={styles.accountSummary}>
-                      <View style={styles.accountDetails}>
-                        <Text style={styles.accountName}>
-                          {account.name}
-                        </Text>
-
-                        <Text style={styles.accountType}>
-                          {account.type === 'KASPI'
-                            ? 'Kaspi'
-                            : 'Наличные'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.accountRight}>
-                        <Text style={styles.accountBalance}>
-                          {Number(account.balance || 0).toLocaleString('ru-RU')} ₸
-                        </Text>
-                        <View
-                          style={[
-                            styles.statusDot,
-                            !account.is_active &&
-                              styles.statusDotInactive,
-                          ]}
-                        />
-                      </View>
-                    </View>
-
-                    <View
-                      style={
-                        styles.accountActions
-                      }
-                    >
-                      <Pressable
-                        onPress={() =>
-                          startEditing(
-                            account
-                          )
-                        }
-                        style={
-                          styles.smallAction
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.editText
-                          }
-                        >
-                          Изменить
-                        </Text>
-                      </Pressable>
-
-                      <Pressable
-                        onPress={() =>
-                          startDelete(
-                            account
-                          )
-                        }
-                        style={
-                          styles.smallAction
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.deleteText
-                          }
-                        >
-                          Удалить
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </>
-                )}
+                <Text
+                  style={styles.sheetSubtitle}
+                >
+                  Измените название или тип счёта
+                </Text>
               </View>
-            );
-          })
-        )}
-      </ScrollView>
+
+              <Pressable
+                style={
+                  styles.sheetCloseButton
+                }
+                onPress={closeEditModal}
+                disabled={saving}
+              >
+                <Text
+                  style={
+                    styles.sheetCloseText
+                  }
+                >
+                  ×
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text
+              style={styles.inputLabel}
+            >
+              НАЗВАНИЕ СЧЁТА
+            </Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Название счёта"
+              placeholderTextColor="#999999"
+              value={editingName}
+              onChangeText={setEditingName}
+              editable={!saving}
+              autoCapitalize="sentences"
+              autoFocus
+            />
+
+            <Text
+              style={[
+                styles.inputLabel,
+                styles.typeLabel,
+              ]}
+            >
+              ТИП СЧЁТА
+            </Text>
+
+            <View
+              style={styles.typeRow}
+            >
+              {(
+                ['KASPI', 'CASH'] as const
+              ).map((accountType) => {
+                const selected =
+                  editingType ===
+                  accountType;
+
+                return (
+                  <Pressable
+                    key={accountType}
+                    style={[
+                      styles.typeButton,
+                      selected &&
+                        styles.typeButtonSelected,
+                    ]}
+                    onPress={() =>
+                      setEditingType(
+                        accountType
+                      )
+                    }
+                    disabled={saving}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        selected &&
+                          styles.typeButtonTextSelected,
+                      ]}
+                    >
+                      {accountType ===
+                      'KASPI'
+                        ? 'Kaspi'
+                        : 'Наличные'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              style={[
+                styles.saveButton,
+                saving &&
+                  styles.disabledButton,
+              ]}
+              onPress={() =>
+                void handleUpdate()
+              }
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#FFFFFF"
+                />
+              ) : (
+                <Text
+                  style={
+                    styles.saveButtonText
+                  }
+                >
+                  Сохранить изменения
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={
+                styles.sheetCancelButton
+              }
+              onPress={closeEditModal}
+              disabled={saving}
+            >
+              <Text
+                style={
+                  styles.sheetCancelText
+                }
+              >
+                Отмена
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ================================= */}
+      {/* DELETE ACCOUNT MODAL              */}
+      {/* ================================= */}
 
       <Modal
         visible={showDeleteModal}
@@ -705,7 +941,9 @@ export default function Accounts() {
         }
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.deleteModal}>
+          <View
+            style={styles.deleteModal}
+          >
             {!showCreateReplacement ? (
               <>
                 <Text
@@ -725,12 +963,15 @@ export default function Accounts() {
                 </Text>
 
                 <Text
-                  style={styles.modalSectionTitle}
+                  style={
+                    styles.modalSectionTitle
+                  }
                 >
-                  Перенести на существующий счёт
+                  Перенести на существующий
+                  счёт
                 </Text>
 
-                {otherActiveAccounts.map(
+                {otherAccounts.map(
                   (account) => (
                     <Pressable
                       key={account.id}
@@ -779,7 +1020,9 @@ export default function Accounts() {
                 )}
 
                 <Text
-                  style={styles.modalSectionTitle}
+                  style={
+                    styles.modalSectionTitle
+                  }
                 >
                   Или
                 </Text>
@@ -839,6 +1082,7 @@ export default function Accounts() {
                 <TextInput
                   style={styles.input}
                   placeholder="Название счёта"
+                  placeholderTextColor="#999999"
                   value={replacementName}
                   onChangeText={
                     setReplacementName
@@ -954,35 +1198,37 @@ const styles = StyleSheet.create({
   },
 
   header: {
+    height: 44,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    marginBottom: 28,
+    position: 'relative',
   },
 
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
+  backButtonContainer: {
+    width: 44,
+    height: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+
+  backButton: {
+    fontSize: 20,
+    lineHeight: 30,
+    fontWeight: '300',
     color: '#111111',
   },
 
-  totalCard: {
-    padding: 20,
-    marginBottom: 24,
-    borderRadius: 12,
-    backgroundColor: '#111111',
-  },
-
-  totalLabel: {
-    color: '#AAAAAA',
-    fontSize: 14,
-    marginBottom: 6,
-  },
-
-  totalAmount: {
-    color: '#FFFFFF',
-    fontSize: 28,
+  headerTitle: {
+    position: 'absolute',
+    left: 44,
+    right: 44,
+    textAlign: 'center',
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: '700',
+    color: '#111111',
   },
 
   addButton: {
@@ -998,96 +1244,83 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 28,
     lineHeight: 30,
+    fontWeight: '300',
   },
 
-  form: {
-    padding: 16,
-    marginBottom: 20,
-    borderRadius: 12,
-    backgroundColor: '#F7F7F7',
-  },
-
-  formTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111111',
-    marginBottom: 12,
-  },
-
-  input: {
-    padding: 13,
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    fontSize: 16,
-  },
-
-  typeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 12,
-  },
-
-  typeButton: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#EAEAEA',
-  },
-
-  typeButtonSelected: {
+  totalCard: {
+    padding: 20,
+    marginBottom: 30,
+    borderRadius: 16,
     backgroundColor: '#111111',
   },
 
-  typeButtonText: {
-    color: '#333333',
-    fontWeight: '600',
+  totalLabel: {
+    color: '#AAAAAA',
+    fontSize: 13,
+    marginBottom: 6,
   },
 
-  typeButtonTextSelected: {
+  totalAmount: {
     color: '#FFFFFF',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '700',
   },
 
-  saveButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 13,
-    borderRadius: 8,
-    backgroundColor: '#208AEF',
-  },
-
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-
-  disabledButton: {
-    opacity: 0.6,
+  sectionTitle: {
+    marginLeft: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.8,
   },
 
   loader: {
     marginTop: 36,
   },
 
+  emptyCard: {
+    padding: 20,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+  },
+
+  emptyTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600',
+    color: '#111111',
+    marginBottom: 6,
+  },
+
   emptyText: {
-    marginTop: 24,
-    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
     color: '#777777',
+    marginBottom: 18,
+  },
+
+  emptyButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: '#111111',
+  },
+
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   accountRow: {
     padding: 16,
     marginBottom: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#F7F7F7',
-  },
-
-  accountDetails: {
-    flex: 1,
-    minWidth: 0,
   },
 
   accountSummary: {
@@ -1095,21 +1328,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  accountRight: {
-    alignItems: 'flex-end',
-    marginLeft: 12,
-  },
-
-  accountBalance: {
-    color: '#111111',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
+  accountDetails: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
   },
 
   accountName: {
     color: '#111111',
-    fontSize: 16,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: '600',
   },
 
@@ -1117,29 +1345,25 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: '#777777',
     fontSize: 14,
+    lineHeight: 19,
+  },
+
+  accountBalance: {
+    color: '#111111',
+    fontSize: 19,
+    lineHeight: 21,
+    fontWeight: '700',
   },
 
   accountActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
     justifyContent: 'flex-end',
-  },
-
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#248A52',
-    marginRight: 12,
-  },
-
-  statusDotInactive: {
-    backgroundColor: '#BBBBBB',
+    marginTop: 14,
   },
 
   smallAction: {
-    marginLeft: 14,
+    marginLeft: 18,
   },
 
   editText: {
@@ -1154,29 +1378,162 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  editAccountContainer: {
-    width: '100%',
+  inputLabel: {
+    marginBottom: 7,
+    marginLeft: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.7,
   },
 
-  editActions: {
+  typeLabel: {
+    marginTop: 15,
+  },
+
+  input: {
+    height: 50,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#DDDDDD',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    fontSize: 15,
+    color: '#111111',
+  },
+
+  typeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 2,
+    marginTop: 4,
+    marginBottom: 18,
   },
 
-  cancelButton: {
+  typeButton: {
     flex: 1,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 13,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#EAEAEA',
   },
 
-  cancelButtonText: {
+  typeButtonSelected: {
+    backgroundColor: '#A33A3A',
+  },
+
+  typeButtonText: {
     color: '#333333',
+    fontSize: 14,
     fontWeight: '600',
   },
+
+  typeButtonTextSelected: {
+    color: '#FFFFFF',
+  },
+
+  saveButton: {
+    width: '100%',
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: '#111111',
+  },
+
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  disabledButton: {
+    opacity: 0.55,
+  },
+
+  /* BOTTOM SHEETS */
+
+  bottomSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+
+  bottomSheetBackdrop: {
+    flex: 1,
+  },
+
+  bottomSheet: {
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 30,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
+  },
+
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    marginBottom: 22,
+    borderRadius: 2,
+    backgroundColor: '#D5D5D5',
+  },
+
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+
+  sheetTitle: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: '#111111',
+  },
+
+  sheetSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#777777',
+  },
+
+  sheetCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAEAEA',
+  },
+
+  sheetCloseText: {
+    fontSize: 26,
+    lineHeight: 28,
+    fontWeight: '300',
+    color: '#555555',
+  },
+
+  sheetCancelButton: {
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+
+  sheetCancelText: {
+    color: '#666666',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  /* DELETE MODAL */
 
   modalOverlay: {
     flex: 1,
@@ -1194,6 +1551,7 @@ const styles = StyleSheet.create({
 
   modalTitle: {
     fontSize: 21,
+    lineHeight: 27,
     fontWeight: '700',
     color: '#111111',
     marginBottom: 8,
@@ -1208,6 +1566,7 @@ const styles = StyleSheet.create({
 
   modalSectionTitle: {
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: '600',
     color: '#888888',
     marginBottom: 8,
@@ -1243,13 +1602,13 @@ const styles = StyleSheet.create({
   createReplacementButton: {
     padding: 14,
     borderRadius: 10,
-    backgroundColor: '#F7F7F7',
+    backgroundColor: '#111111',
     alignItems: 'center',
     marginBottom: 8,
   },
 
   createReplacementText: {
-    color: '#208AEF',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
   },

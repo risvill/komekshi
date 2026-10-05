@@ -1,6 +1,8 @@
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -18,24 +20,29 @@ export default function More() {
   const { user, logout, updateUser } = useAuth();
 
   const [loggingOut, setLoggingOut] = useState(false);
-  const [editingAccount, setEditingAccount] = useState(false);
-  const [savingAccount, setSavingAccount] = useState(false);
 
-  const [businessName, setBusinessName] = useState(
-    user?.business_name || ''
-  );
-  const [userName, setUserName] = useState(
-    user?.name || ''
-  );
-  const [email, setEmail] = useState(
-    user?.email || ''
-  );
-  const [phone, setPhone] = useState(
-    user?.phone || ''
-  );
+  const [editingAccount, setEditingAccount] =
+    useState(false);
+
+  const [savingAccount, setSavingAccount] =
+    useState(false);
+
+  const [businessName, setBusinessName] =
+    useState(user?.business_name || '');
+
+  const [userName, setUserName] =
+    useState(user?.name || '');
+
+  const [email, setEmail] =
+    useState(user?.email || '');
+
+  const [phone, setPhone] =
+    useState(user?.phone || '');
 
   const startEditingAccount = () => {
-    setBusinessName(user?.business_name || '');
+    setBusinessName(
+      user?.business_name || ''
+    );
     setUserName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
@@ -43,7 +50,13 @@ export default function More() {
   };
 
   const cancelEditingAccount = () => {
-    setBusinessName(user?.business_name || '');
+    if (savingAccount) {
+      return;
+    }
+
+    setBusinessName(
+      user?.business_name || ''
+    );
     setUserName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
@@ -52,12 +65,18 @@ export default function More() {
 
   const saveAccount = async () => {
     if (!userName.trim()) {
-      Alert.alert('Ошибка', 'Введите имя');
+      Alert.alert(
+        'Ошибка',
+        'Введите имя'
+      );
       return;
     }
 
     if (!email.trim()) {
-      Alert.alert('Ошибка', 'Введите email');
+      Alert.alert(
+        'Ошибка',
+        'Введите email'
+      );
       return;
     }
 
@@ -68,7 +87,8 @@ export default function More() {
         name: userName.trim(),
         email: email.trim(),
         phone: phone.trim() || null,
-        business_name: businessName.trim() || null,
+        business_name:
+          businessName.trim() || null,
       });
 
       setEditingAccount(false);
@@ -95,7 +115,9 @@ export default function More() {
   const performLogout = async () => {
     try {
       setLoggingOut(true);
+
       await logout();
+
       router.replace('/login');
     } catch (error) {
       console.error(
@@ -113,7 +135,9 @@ export default function More() {
   };
 
   const handleLogout = () => {
-    if (loggingOut) return;
+    if (loggingOut) {
+      return;
+    }
 
     if (Platform.OS === 'web') {
       if (
@@ -138,255 +162,403 @@ export default function More() {
         {
           text: 'Выйти',
           style: 'destructive',
-          onPress: () => void performLogout(),
+          onPress: () =>
+            void performLogout(),
         },
       ]
     );
   };
 
+  const getInitials = () => {
+    const name =
+      user?.name?.trim() ||
+      user?.business_name?.trim() ||
+      'K';
+
+    const words = name
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length >= 2) {
+      return (
+        words[0][0] +
+        words[1][0]
+      ).toUpperCase();
+    }
+
+    return name
+      .slice(0, 2)
+      .toUpperCase();
+  };
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>
-        Ещё
-      </Text>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.title}>
+          Ещё
+        </Text>
 
-      <Text style={styles.sectionTitle}>
-        АККАУНТ
-      </Text>
+        <Text style={styles.sectionTitle}>
+          АККАУНТ
+        </Text>
 
-      <View style={styles.accountCard}>
-        {!editingAccount ? (
-          <>
-            <View style={styles.accountHeader}>
-              <View style={styles.accountInfo}>
-                <Text style={styles.businessName}>
-                  {user?.business_name ||
-                    'Komekshi'}
+        <View style={styles.profileCard}>
+          <View style={styles.profileTop}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {getInitials()}
+              </Text>
+            </View>
+
+            <View style={styles.profileMain}>
+              <Text
+                style={styles.businessName}
+                numberOfLines={1}
+              >
+                {user?.business_name ||
+                  'Komekshi'}
+              </Text>
+
+              <Text style={styles.userName}>
+                {user?.name ||
+                  'Пользователь'}
+              </Text>
+            </View>
+
+            <Pressable
+              style={styles.editButton}
+              onPress={startEditingAccount}
+              hitSlop={8}
+            >
+              <Text style={styles.editButtonText}>
+                Изменить
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.profileDivider} />
+
+          <View style={styles.contactRow}>
+            <Text style={styles.contactLabel}>
+              EMAIL
+            </Text>
+
+            <Text
+              style={styles.contactValue}
+              numberOfLines={1}
+            >
+              {user?.email || '—'}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.contactRow,
+              styles.contactRowLast,
+            ]}
+          >
+            <Text style={styles.contactLabel}>
+              ТЕЛЕФОН
+            </Text>
+
+            <Text
+              style={styles.contactValue}
+              numberOfLines={1}
+            >
+              {user?.phone || '—'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>
+            УПРАВЛЕНИЕ
+          </Text>
+
+          <Text style={styles.sectionHint}>
+            KOMEKSHI
+          </Text>
+        </View>
+
+        <View style={styles.menuCard}>
+          <Pressable
+            style={styles.menuItem}
+            onPress={() =>
+              router.push('/accounts')
+            }
+          >
+            <View
+              style={[
+                styles.menuIcon,
+                styles.accountIcon,
+              ]}
+            >
+              <Text style={styles.iconText}>
+                ₸
+              </Text>
+            </View>
+
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuTitle}>
+                Счета
+              </Text>
+
+              <Text style={styles.menuSubtitle}>
+                Счета и оплаты
+              </Text>
+            </View>
+
+            <Text style={styles.arrow}>
+              ›
+            </Text>
+          </Pressable>
+
+          <View style={styles.menuDivider} />
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() =>
+              router.push('/products')
+            }
+          >
+            <View
+              style={[
+                styles.menuIcon,
+                styles.productIcon,
+              ]}
+            >
+              <Text style={styles.iconText}>
+                📦
+              </Text>
+            </View>
+
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuTitle}>
+                Товары
+              </Text>
+
+              <Text style={styles.menuSubtitle}>
+                Товары и цены
+              </Text>
+            </View>
+
+            <Text style={styles.arrow}>
+              ›
+            </Text>
+          </Pressable>
+
+          <View style={styles.menuDivider} />
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() =>
+              router.push('/tasks')
+            }
+          >
+            <View
+              style={[
+                styles.menuIcon,
+                styles.taskIcon,
+              ]}
+            >
+              <Text style={styles.iconText}>
+                ✓
+              </Text>
+            </View>
+
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuTitle}>
+                Задачи
+              </Text>
+
+              <Text style={styles.menuSubtitle}>
+                Задачи и сроки
+              </Text>
+            </View>
+
+            <Text style={styles.arrow}>
+              ›
+            </Text>
+          </Pressable>
+        </View>
+
+        <Pressable
+          style={[
+            styles.logoutItem,
+            loggingOut &&
+              styles.logoutItemDisabled,
+          ]}
+          onPress={handleLogout}
+          disabled={loggingOut}
+        >
+          <Text style={styles.logoutText}>
+            {loggingOut
+              ? 'Выходим...'
+              : 'Выйти из аккаунта'}
+          </Text>
+        </Pressable>
+
+        <Text style={styles.version}>
+          Komekshi
+        </Text>
+      </ScrollView>
+
+      <Modal
+        visible={editingAccount}
+        transparent
+        animationType="slide"
+        onRequestClose={cancelEditingAccount}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={
+            Platform.OS === 'ios'
+              ? 'padding'
+              : undefined
+          }
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={cancelEditingAccount}
+          />
+
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderText}>
+                <Text style={styles.sheetTitle}>
+                  Данные аккаунта
                 </Text>
 
-                <Text style={styles.userName}>
-                  {user?.name ||
-                    'Пользователь'}
+                <Text style={styles.sheetSubtitle}>
+                  Измените информацию о себе
                 </Text>
-
-                <Text style={styles.email}>
-                  {user?.email || ''}
-                </Text>
-
-                {user?.phone && (
-                  <Text style={styles.phone}>
-                    {user.phone}
-                  </Text>
-                )}
               </View>
 
               <Pressable
-                style={styles.editButton}
-                onPress={startEditingAccount}
-              >
-                <Text style={styles.editButtonText}>
-                  Изменить
-                </Text>
-              </Pressable>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.inputLabel}>
-              Название бизнеса
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={businessName}
-              onChangeText={setBusinessName}
-              placeholder="Название бизнеса"
-              editable={!savingAccount}
-            />
-
-            <Text style={styles.inputLabel}>
-              Имя
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={userName}
-              onChangeText={setUserName}
-              placeholder="Имя"
-              editable={!savingAccount}
-            />
-
-            <Text style={styles.inputLabel}>
-              Email
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              editable={!savingAccount}
-            />
-
-            <Text style={styles.inputLabel}>
-              Телефон
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Телефон"
-              keyboardType="phone-pad"
-              editable={!savingAccount}
-            />
-
-            <View style={styles.editActions}>
-              <Pressable
-                style={styles.cancelButton}
+                style={styles.closeButton}
                 onPress={cancelEditingAccount}
                 disabled={savingAccount}
+                hitSlop={8}
               >
-                <Text style={styles.cancelButtonText}>
-                  Отмена
+                <Text style={styles.closeButtonText}>
+                  ×
                 </Text>
               </Pressable>
-
-              <Pressable
-                style={[
-                  styles.saveButton,
-                  savingAccount &&
-                    styles.disabledButton,
-                ]}
-                onPress={() =>
-                  void saveAccount()
-                }
-                disabled={savingAccount}
-              >
-                {savingAccount ? (
-                  <ActivityIndicator
-                    size="small"
-                    color="#FFFFFF"
-                  />
-                ) : (
-                  <Text style={styles.saveButtonText}>
-                    Сохранить
-                  </Text>
-                )}
-              </Pressable>
             </View>
-          </>
-        )}
-      </View>
 
-      <Text style={styles.sectionTitle}>
-        УПРАВЛЕНИЕ
-      </Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={
+                styles.sheetContent
+              }
+            >
+              <Text style={styles.inputLabel}>
+                НАЗВАНИЕ БИЗНЕСА
+              </Text>
 
-      <Pressable
-        style={styles.menuItem}
-        onPress={() =>
-          router.push('/accounts')
-        }
-      >
-        <View style={styles.menuIcon}>
-          <Text style={styles.iconText}>
-            ₸
-          </Text>
-        </View>
+              <TextInput
+                style={styles.input}
+                value={businessName}
+                onChangeText={setBusinessName}
+                placeholder="Название бизнеса"
+                placeholderTextColor="#999999"
+                editable={!savingAccount}
+              />
 
-        <View style={styles.menuTextContainer}>
-          <Text style={styles.menuTitle}>
-            Счета
-          </Text>
+              <Text style={styles.inputLabel}>
+                ИМЯ
+              </Text>
 
-          <Text style={styles.menuSubtitle}>
-            Управление счетами и оплатами
-          </Text>
-        </View>
+              <TextInput
+                style={styles.input}
+                value={userName}
+                onChangeText={setUserName}
+                placeholder="Имя"
+                placeholderTextColor="#999999"
+                editable={!savingAccount}
+                autoCapitalize="words"
+              />
 
-        <Text style={styles.arrow}>
-          ›
-        </Text>
-      </Pressable>
+              <Text style={styles.inputLabel}>
+                EMAIL
+              </Text>
 
-      <Pressable
-        style={styles.menuItem}
-        onPress={() =>
-          router.push('/products')
-        }
-      >
-        <View style={styles.menuIcon}>
-          <Text style={styles.iconText}>
-            Т
-          </Text>
-        </View>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email"
+                placeholderTextColor="#999999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                editable={!savingAccount}
+              />
 
-        <View style={styles.menuTextContainer}>
-          <Text style={styles.menuTitle}>
-            Товары
-          </Text>
+              <Text style={styles.inputLabel}>
+                ТЕЛЕФОН
+              </Text>
 
-          <Text style={styles.menuSubtitle}>
-            Управление товарами и ценами
-          </Text>
-        </View>
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Телефон"
+                placeholderTextColor="#999999"
+                keyboardType="phone-pad"
+                editable={!savingAccount}
+              />
 
-        <Text style={styles.arrow}>
-          ›
-        </Text>
-      </Pressable>
+              <View style={styles.editActions}>
+                <Pressable
+                  style={styles.cancelButton}
+                  onPress={cancelEditingAccount}
+                  disabled={savingAccount}
+                >
+                  <Text
+                    style={styles.cancelButtonText}
+                  >
+                    Отмена
+                  </Text>
+                </Pressable>
 
-      <Pressable
-        style={styles.menuItem}
-        onPress={() =>
-          router.push('/tasks')
-        }
-      >
-        <View style={styles.menuIcon}>
-          <Text style={styles.iconText}>
-            ✓
-          </Text>
-        </View>
-
-        <View style={styles.menuTextContainer}>
-          <Text style={styles.menuTitle}>
-            Задачи
-          </Text>
-
-          <Text style={styles.menuSubtitle}>
-            Задачи и сроки
-          </Text>
-        </View>
-
-        <Text style={styles.arrow}>
-          ›
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[
-          styles.logoutItem,
-          loggingOut &&
-            styles.logoutItemDisabled,
-        ]}
-        onPress={handleLogout}
-        disabled={loggingOut}
-      >
-        <Text style={styles.logoutText}>
-          {loggingOut
-            ? 'Выходим...'
-            : 'Выйти'}
-        </Text>
-      </Pressable>
-    </ScrollView>
+                <Pressable
+                  style={[
+                    styles.saveButton,
+                    savingAccount &&
+                      styles.disabledButton,
+                  ]}
+                  onPress={() =>
+                    void saveAccount()
+                  }
+                  disabled={savingAccount}
+                >
+                  {savingAccount ? (
+                    <ActivityIndicator
+                      size="small"
+                      color="#FFFFFF"
+                    />
+                  ) : (
+                    <Text
+                      style={styles.saveButtonText}
+                    >
+                      Сохранить
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
@@ -403,88 +575,320 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: 32,
+    lineHeight: 38,
     fontWeight: '700',
     color: '#111111',
-    marginBottom: 28,
-  },
-
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#888888',
-    letterSpacing: 0.6,
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-
-  accountCard: {
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
-    padding: 20,
     marginBottom: 30,
   },
 
-  accountHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  sectionTitle: {
+    marginLeft: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.8,
   },
 
-  accountInfo: {
+  profileCard: {
+    padding: 20,
+    marginBottom: 30,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+  },
+
+  profileTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111111',
+    marginRight: 14,
+  },
+
+  avatarText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+
+  profileMain: {
     flex: 1,
-    paddingRight: 12,
+    paddingRight: 10,
   },
 
   businessName: {
-    fontSize: 20,
+    marginBottom: 3,
+    fontSize: 19,
+    lineHeight: 24,
     fontWeight: '700',
     color: '#111111',
-    marginBottom: 6,
   },
 
   userName: {
-    fontSize: 16,
-    color: '#333333',
-    marginBottom: 4,
-  },
-
-  email: {
     fontSize: 14,
-    color: '#777777',
-  },
-
-  phone: {
-    marginTop: 4,
-    fontSize: 14,
+    lineHeight: 19,
     color: '#777777',
   },
 
   editButton: {
-    paddingVertical: 6,
     paddingHorizontal: 2,
+    paddingVertical: 5,
   },
 
   editButtonText: {
-    color: '#208AEF',
     fontSize: 14,
     fontWeight: '600',
+    color: '#208AEF',
   },
 
-  inputLabel: {
-    marginBottom: 6,
-    fontSize: 13,
+  profileDivider: {
+    height: 1,
+    backgroundColor: '#E5E5E5',
+    marginVertical: 18,
+  },
+
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 25,
+    marginBottom: 8,
+  },
+
+  contactRowLast: {
+    marginBottom: 0,
+  },
+
+  contactLabel: {
+    width: 72,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: '700',
+    color: '#999999',
+    letterSpacing: 0.7,
+  },
+
+  contactValue: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 19,
+    color: '#444444',
+    textAlign: 'right',
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 4,
+  },
+
+  sectionHint: {
+    marginBottom: 10,
+    fontSize: 10,
     fontWeight: '600',
+    color: '#C2C2C2',
+    letterSpacing: 1,
+  },
+
+  menuCard: {
+    overflow: 'hidden',
+    marginBottom: 24,
+    borderRadius: 16,
+    backgroundColor: '#F7F7F7',
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 76,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+
+  menuIcon: {
+    width: 42,
+    height: 42,
+    marginRight: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  accountIcon: {
+    backgroundColor: '#FFFFFF',
+  },
+
+  productIcon: {
+    backgroundColor: '#FFFFFF',
+  },
+
+  taskIcon: {
+    backgroundColor: '#FFFFFF',
+  },
+
+  iconText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  menuTextContainer: {
+    flex: 1,
+  },
+
+  menuTitle: {
+    marginBottom: 3,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
+  menuSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#777777',
+  },
+
+  arrow: {
+    marginLeft: 10,
+    fontSize: 27,
+    lineHeight: 30,
+    fontWeight: '300',
+    color: '#888888',
+  },
+
+  logoutItem: {
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: '#FCE8E6',
+  },
+
+  logoutText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#B42318',
+  },
+
+  logoutItemDisabled: {
+    opacity: 0.6,
+  },
+
+  version: {
+    marginTop: 12,
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#C0C0C0',
+    letterSpacing: 0.8,
+  },
+
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+
+  bottomSheet: {
+    maxHeight: '90%',
+    paddingTop: 10,
+    paddingHorizontal: 24,
+    paddingBottom: 30,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
+  },
+
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    marginBottom: 20,
+    borderRadius: 2,
+    backgroundColor: '#D0D0D0',
+  },
+
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 22,
+  },
+
+  sheetHeaderText: {
+    flex: 1,
+    paddingRight: 16,
+  },
+
+  sheetTitle: {
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: '#111111',
+  },
+
+  sheetSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#777777',
+  },
+
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAEAEA',
+  },
+
+  closeButtonText: {
+    marginTop: -2,
+    fontSize: 25,
+    lineHeight: 28,
+    fontWeight: '300',
     color: '#555555',
   },
 
+  sheetContent: {
+    paddingBottom: 4,
+  },
+
+  inputLabel: {
+    marginBottom: 7,
+    marginLeft: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+    color: '#888888',
+    letterSpacing: 0.6,
+  },
+
   input: {
-    backgroundColor: '#FFFFFF',
+    height: 50,
+    marginBottom: 16,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: '#DDDDDD',
-    borderRadius: 8,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
     fontSize: 15,
-    marginBottom: 14,
+    color: '#111111',
   },
 
   editActions: {
@@ -495,95 +899,41 @@ const styles = StyleSheet.create({
 
   cancelButton: {
     flex: 1,
+    minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#EAEAEA',
   },
 
   cancelButtonText: {
-    color: '#333333',
+    fontSize: 14,
     fontWeight: '600',
+    color: '#333333',
   },
 
   saveButton: {
     flex: 1,
+    minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
-    borderRadius: 8,
-    backgroundColor: '#208AEF',
+    borderRadius: 10,
+    backgroundColor: '#111111',
   },
 
   saveButtonText: {
-    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
 
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
 
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-  },
-
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-
-  iconText: {
-    fontSize: 19,
-  },
-
-  menuTextContainer: {
-    flex: 1,
-  },
-
-  menuTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#111111',
-    marginBottom: 3,
-  },
-
-  menuSubtitle: {
-    fontSize: 14,
-    color: '#777777',
-  },
-
-  arrow: {
-    fontSize: 26,
-    color: '#777777',
-  },
-
-  logoutItem: {
-    marginTop: 24,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#FCE8E6',
-  },
-
-  logoutText: {
-    color: '#B42318',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-
-  logoutItemDisabled: {
-    opacity: 0.6,
-  },
+  menuDivider: {
+  height: 1,
+  backgroundColor: '#E5E5E5',
+  marginLeft: 58,
+},
 });

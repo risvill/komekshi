@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function AppLayout() {
   return (
     <SafeAreaView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: '#FFFFFF' }}
       edges={['top']}
     >
       <Tabs
@@ -126,6 +126,12 @@ export default function AppLayout() {
         />
         <Tabs.Screen
           name="select-product"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="new-task"
           options={{
             href: null,
           }}

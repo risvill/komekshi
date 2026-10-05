@@ -1,90 +1,32 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   Alert,
-  Animated,
-  Easing,
-  LayoutAnimation,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  UIManager,
   View,
 } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
-import { getOrders } from '@/services/ordersService';
 import {
-  createTask,
   getTasks,
   updateTaskStatus,
 } from '@/services/tasksService';
-import { Order } from '@/types/order';
 import { Task, TaskStatus } from '@/types/task';
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-const ACTIVE_ORDER_STATUSES = [
-  'ACCEPTED',
-  'IN_PROGRESS',
-];
 
 export default function TasksScreen() {
   const { token } = useAuth();
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
-
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [title, setTitle] = useState('');
-  const [deadline, setDeadline] = useState<Date | null>(null);
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-  const toggleCreate = () => {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        220,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity
-      )
-    );
-
-    const nextValue = !showCreate;
-
-    setShowCreate(nextValue);
-
-    Animated.timing(rotateAnim, {
-      toValue: nextValue ? 1 : 0,
-      duration: 220,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-
-    if (!nextValue) {
-      setShowDatePicker(false);
-      setShowTimePicker(false);
-    }
-  };
 
   const loadTasks = async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -104,78 +46,19 @@ export default function TasksScreen() {
     }
   };
 
-  const loadOrders = async () => {
-    if (!token) return;
-
-    try {
-      const data = await getOrders(token);
-
-      setOrders(data);
-    } catch (error) {
-      console.error('Failed to load orders:', error);
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
       loadTasks();
-      loadOrders();
     }, [token])
   );
-
-  const activeOrders = orders.filter((order) =>
-    ACTIVE_ORDER_STATUSES.includes(order.status)
-  );
-
-  const handleCreateTask = async () => {
-    if (!token || saving) return;
-
-    if (!title.trim()) {
-      Alert.alert(
-        'Не указано название',
-        'Введите название задачи'
-      );
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const newTask = await createTask(token, {
-        title: title.trim(),
-        deadline: deadline
-          ? deadline.toISOString()
-          : null,
-        order_ids: selectedOrderIds,
-      });
-
-      setTasks((current) => [
-        newTask,
-        ...current,
-      ]);
-
-      setTitle('');
-      setDeadline(null);
-      setSelectedOrderIds([]);
-
-      toggleCreate();
-    } catch (error) {
-      console.error('Failed to create task:', error);
-
-      Alert.alert(
-        'Ошибка',
-        'Не удалось создать задачу'
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleStatusChange = async (
     task: Task,
     status: TaskStatus
   ) => {
-    if (!token || task.status === status) return;
+    if (!token || task.status === status) {
+      return;
+    }
 
     try {
       const updatedTask =
@@ -205,20 +88,6 @@ export default function TasksScreen() {
     }
   };
 
-  const toggleOrderSelection = (
-    orderId: string
-  ) => {
-    setSelectedOrderIds((current) => {
-      if (current.includes(orderId)) {
-        return current.filter(
-          (id) => id !== orderId
-        );
-      }
-
-      return [...current, orderId];
-    });
-  };
-
   const formatDeadline = (
     value: string | null
   ) => {
@@ -239,6 +108,7 @@ export default function TasksScreen() {
     );
 
     const tomorrow = new Date(today);
+
     tomorrow.setDate(
       tomorrow.getDate() + 1
     );
@@ -278,51 +148,6 @@ export default function TasksScreen() {
         month: 'long',
       }
     )}, ${time}`;
-  };
-
-  const formatOrderDate = (
-    value: string | null | undefined
-  ) => {
-    if (!value) return '';
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return '';
-    }
-
-    return date.toLocaleDateString(
-      'ru-RU',
-      {
-        day: 'numeric',
-        month: 'short',
-      }
-    );
-  };
-
-  const formatOrderStatus = (
-    status: string
-  ) => {
-    switch (status) {
-      case 'ACCEPTED':
-        return 'Принят';
-
-      case 'IN_PROGRESS':
-        return 'В процессе';
-
-      default:
-        return '';
-    }
-  };
-
-  const getOrderAmount = (
-    order: Order
-  ) => {
-    const amount = Number(order.total ?? 0);
-
-    return `${amount.toLocaleString(
-      'ru-RU'
-    )} ₸`;
   };
 
   const getTaskOrdersText = (
@@ -420,8 +245,7 @@ export default function TasksScreen() {
               styles.statusBadge,
               item.status === 'TODO' &&
                 styles.statusBadgeTodo,
-              item.status ===
-                'IN_PROGRESS' &&
+              item.status === 'IN_PROGRESS' &&
                 styles.statusBadgeProgress,
               item.status === 'DONE' &&
                 styles.statusBadgeDone,
@@ -432,16 +256,13 @@ export default function TasksScreen() {
                 styles.statusBadgeText,
                 item.status === 'TODO' &&
                   styles.statusBadgeTextTodo,
-                item.status ===
-                  'IN_PROGRESS' &&
+                item.status === 'IN_PROGRESS' &&
                   styles.statusBadgeTextProgress,
                 item.status === 'DONE' &&
                   styles.statusBadgeTextDone,
               ]}
             >
-              {getStatusLabel(
-                item.status
-              )}
+              {getStatusLabel(item.status)}
             </Text>
           </View>
         </View>
@@ -455,6 +276,7 @@ export default function TasksScreen() {
             ]}
             onPress={(event) => {
               event.stopPropagation();
+
               void handleStatusChange(
                 item,
                 'TODO'
@@ -475,12 +297,12 @@ export default function TasksScreen() {
           <Pressable
             style={[
               styles.statusButton,
-              item.status ===
-                'IN_PROGRESS' &&
+              item.status === 'IN_PROGRESS' &&
                 styles.statusButtonActive,
             ]}
             onPress={(event) => {
               event.stopPropagation();
+
               void handleStatusChange(
                 item,
                 'IN_PROGRESS'
@@ -490,8 +312,7 @@ export default function TasksScreen() {
             <Text
               style={[
                 styles.statusButtonText,
-                item.status ===
-                  'IN_PROGRESS' &&
+                item.status === 'IN_PROGRESS' &&
                   styles.statusButtonTextActive,
               ]}
             >
@@ -507,6 +328,7 @@ export default function TasksScreen() {
             ]}
             onPress={(event) => {
               event.stopPropagation();
+
               void handleStatusChange(
                 item,
                 'DONE'
@@ -517,7 +339,7 @@ export default function TasksScreen() {
               style={[
                 styles.statusButtonText,
                 item.status === 'DONE' &&
-                  styles.statusButtonTextActive,
+                  styles.statusButtonActive,
               ]}
             >
               Готово
@@ -541,18 +363,12 @@ export default function TasksScreen() {
     (task) => task.status === 'DONE'
   );
 
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '45deg'],
-  });
-
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={
         styles.contentContainer
       }
-      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
@@ -561,294 +377,18 @@ export default function TasksScreen() {
         </Text>
 
         <Pressable
-          style={[
-            styles.addButton,
-            showCreate &&
-              styles.addButtonOpen,
-          ]}
-          onPress={toggleCreate}
-          accessibilityRole="button"
-          accessibilityLabel={
-            showCreate
-              ? 'Закрыть создание задачи'
-              : 'Создать задачу'
+          style={styles.addButton}
+          onPress={() =>
+            router.push('/new-task')
           }
+          accessibilityRole="button"
+          accessibilityLabel="Создать задачу"
         >
-          <Animated.Text
-            style={[
-              styles.addButtonText,
-              {
-                transform: [
-                  {
-                    rotate,
-                  },
-                ],
-              },
-            ]}
-          >
+          <Text style={styles.addButtonText}>
             +
-          </Animated.Text>
+          </Text>
         </Pressable>
       </View>
-
-      {showCreate && (
-        <View style={styles.createBox}>
-          <Text style={styles.createTitle}>
-            Новая задача
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Что нужно сделать?"
-            placeholderTextColor="#999"
-            value={title}
-            onChangeText={setTitle}
-            editable={!saving}
-            autoFocus
-          />
-
-          <Text style={styles.fieldLabel}>
-            Срок
-          </Text>
-
-          <View style={styles.dateRow}>
-            <Pressable
-              style={styles.dateButton}
-              onPress={() =>
-                setShowDatePicker(true)
-              }
-              disabled={saving}
-            >
-              <Text
-                style={[
-                  styles.dateButtonText,
-                  !deadline &&
-                    styles.dateButtonPlaceholder,
-                ]}
-              >
-                {deadline
-                  ? deadline.toLocaleDateString(
-                      'ru-RU',
-                      {
-                        day: 'numeric',
-                        month: 'long',
-                      }
-                    )
-                  : 'Выбрать дату'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.timeButton}
-              onPress={() =>
-                setShowTimePicker(true)
-              }
-              disabled={saving}
-            >
-              <Text
-                style={[
-                  styles.dateButtonText,
-                  !deadline &&
-                    styles.dateButtonPlaceholder,
-                ]}
-              >
-                {deadline
-                  ? deadline.toLocaleTimeString(
-                      'ru-RU',
-                      {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      }
-                    )
-                  : 'Время'}
-              </Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.fieldLabel}>
-            Привязать к заказам
-          </Text>
-
-          <Text style={styles.fieldHint}>
-            Можно выбрать несколько активных
-            заказов
-          </Text>
-
-          {activeOrders.length === 0 ? (
-            <View style={styles.noOrdersBox}>
-              <Text style={styles.noOrdersTitle}>
-                Нет активных заказов
-              </Text>
-
-              <Text style={styles.noOrdersText}>
-                Задачу можно создать без
-                привязки к заказу или сначала
-                принять заказ.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.ordersList}>
-              {activeOrders.map((order) => {
-                const selected =
-                  selectedOrderIds.includes(
-                    order.id
-                  );
-
-                return (
-                  <Pressable
-                    key={order.id}
-                    style={[
-                      styles.orderOption,
-                      selected &&
-                        styles.selectedOrder,
-                    ]}
-                    onPress={() =>
-                      toggleOrderSelection(
-                        order.id
-                      )
-                    }
-                    disabled={saving}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        selected &&
-                          styles.checkboxSelected,
-                      ]}
-                    >
-                      {selected && (
-                        <Text
-                          style={
-                            styles.checkboxMark
-                          }
-                        >
-                          ✓
-                        </Text>
-                      )}
-                    </View>
-
-                    <View
-                      style={
-                        styles.orderOptionContent
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.orderOptionTitle
-                        }
-                        numberOfLines={1}
-                      >
-                        {order.client_name ||
-                          'Без клиента'}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.orderOptionSubtitle
-                        }
-                      >
-                        {formatOrderDate(
-                          order.order_date
-                        )}
-                        {' · '}
-                        {getOrderAmount(order)}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.orderOptionStatus
-                        }
-                      >
-                        {formatOrderStatus(
-                          order.status
-                        )}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          <Pressable
-            style={[
-              styles.createButton,
-              saving &&
-                styles.createButtonDisabled,
-            ]}
-            onPress={() =>
-              void handleCreateTask()
-            }
-            disabled={saving}
-          >
-            <Text
-              style={
-                styles.createButtonText
-              }
-            >
-              {saving
-                ? 'Создание...'
-                : 'Создать задачу'}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {showDatePicker && (
-        <DateTimePicker
-          value={
-            deadline ?? new Date()
-          }
-          mode="date"
-          display="spinner"
-          onChange={(event, date) => {
-            setShowDatePicker(false);
-
-            if (!date) return;
-
-            const current =
-              deadline ?? new Date();
-
-            date.setHours(
-              current.getHours(),
-              current.getMinutes(),
-              0,
-              0
-            );
-
-            setDeadline(date);
-          }}
-        />
-      )}
-
-      {showTimePicker && (
-        <DateTimePicker
-          value={
-            deadline ?? new Date()
-          }
-          mode="time"
-          display="spinner"
-          onChange={(event, date) => {
-            setShowTimePicker(false);
-
-            if (!date) return;
-
-            const current =
-              deadline ?? new Date();
-
-            current.setHours(
-              date.getHours(),
-              date.getMinutes(),
-              0,
-              0
-            );
-
-            setDeadline(
-              new Date(current)
-            );
-          }}
-        />
-      )}
 
       {loading ? (
         <View style={styles.loadingBox}>
@@ -867,20 +407,20 @@ export default function TasksScreen() {
             держать рабочие дела в голове.
           </Text>
 
-          {!showCreate && (
-            <Pressable
-              style={styles.emptyCreateButton}
-              onPress={toggleCreate}
+          <Pressable
+            style={styles.emptyCreateButton}
+            onPress={() =>
+              router.push('/new-task')
+            }
+          >
+            <Text
+              style={
+                styles.emptyCreateButtonText
+              }
             >
-              <Text
-                style={
-                  styles.emptyCreateButtonText
-                }
-              >
-                Создать задачу
-              </Text>
-            </Pressable>
-          )}
+              Создать задачу
+            </Text>
+          </Pressable>
         </View>
       ) : (
         <View>
@@ -942,7 +482,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 28,
   },
 
   title: {
@@ -960,10 +500,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  addButtonOpen: {
-    backgroundColor: '#EAEAEA',
-  },
-
   addButtonText: {
     color: '#FFFFFF',
     fontSize: 30,
@@ -971,184 +507,8 @@ const styles = StyleSheet.create({
     fontWeight: '300',
   },
 
-  createBox: {
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: '#F7F7F7',
-    marginBottom: 28,
-  },
-
-  createTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111111',
-    marginBottom: 16,
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 16,
-    color: '#111111',
-    marginBottom: 18,
-  },
-
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 8,
-  },
-
-  fieldHint: {
-    fontSize: 13,
-    color: '#888888',
-    marginBottom: 10,
-  },
-
-  dateRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-
-  dateButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-  },
-
-  timeButton: {
-    width: 110,
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-  },
-
-  dateButtonText: {
-    color: '#111111',
-    fontSize: 15,
-  },
-
-  dateButtonPlaceholder: {
-    color: '#999999',
-  },
-
-  ordersList: {
-    marginBottom: 16,
-  },
-
-  orderOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E4E4E4',
-    marginBottom: 8,
-  },
-
-  selectedOrder: {
-    borderColor: '#111111',
-    backgroundColor: '#F1F1F1',
-  },
-
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#BBBBBB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-
-  checkboxSelected: {
-    backgroundColor: '#111111',
-    borderColor: '#111111',
-  },
-
-  checkboxMark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  orderOptionContent: {
-    flex: 1,
-  },
-
-  orderOptionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111111',
-  },
-
-  orderOptionSubtitle: {
-    fontSize: 13,
-    color: '#777777',
-    marginTop: 4,
-  },
-
-  orderOptionStatus: {
-    fontSize: 12,
-    color: '#555555',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-
-  noOrdersBox: {
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E4E4E4',
-    marginBottom: 16,
-  },
-
-  noOrdersTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 4,
-  },
-
-  noOrdersText: {
-    fontSize: 13,
-    color: '#777777',
-    lineHeight: 18,
-  },
-
-  createButton: {
-    backgroundColor: '#111111',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-
-  createButtonDisabled: {
-    opacity: 0.55,
-  },
-
-  createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
   section: {
-    marginBottom: 20,
+    marginBottom: 10,
   },
 
   sectionHeader: {
@@ -1156,7 +516,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#888888',
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginBottom: 15,
     marginLeft: 4,
   },
 
