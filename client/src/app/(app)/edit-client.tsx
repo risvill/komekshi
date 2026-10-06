@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -113,6 +114,7 @@ export default function EditClient() {
   }
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       contentContainerStyle={styles.container}
     >
@@ -170,6 +172,7 @@ export default function EditClient() {
         </Text>
       </Pressable>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

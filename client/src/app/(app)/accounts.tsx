@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
 
@@ -394,7 +395,7 @@ export default function Accounts() {
   );
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={
@@ -1182,7 +1183,7 @@ export default function Accounts() {
           </View>
         </View>
       </Modal>
-    </>
+    </SafeAreaView>
   );
 }
 

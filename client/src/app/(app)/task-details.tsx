@@ -18,6 +18,7 @@ import {
   updateTaskStatus,
 } from '@/services/tasksService';
 import { Task, TaskStatus } from '@/types/task';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 function getStatusLabel(status: TaskStatus) {
   switch (status) {
@@ -352,6 +353,7 @@ export default function TaskDetails() {
     formatDeadline(task.deadline);
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -583,6 +585,7 @@ export default function TaskDetails() {
         </Pressable>
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
 
@@ -139,6 +140,7 @@ export default function SelectProduct() {
   }
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={
@@ -355,6 +357,7 @@ export default function SelectProduct() {
         </Pressable>
       </View>
     </View>
+    </SafeAreaView>
   );
 }
 

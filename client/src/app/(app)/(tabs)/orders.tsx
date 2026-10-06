@@ -1,4 +1,8 @@
-import { router, useFocusEffect } from 'expo-router';
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+} from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -145,6 +149,12 @@ function getStatusColors(status: string) {
 export default function Orders() {
   const { token } = useAuth();
 
+  const { from } = useLocalSearchParams<{
+    from?: string;
+  }>();
+
+  const showBack = from === 'today';
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -164,7 +174,10 @@ export default function Orders() {
       const data = await getOrders(token);
       setOrders(data);
     } catch (error) {
-      console.error('Failed to load orders:', error);
+      console.error(
+        'Failed to load orders:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -252,28 +265,54 @@ export default function Orders() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>
-            Заказы
-          </Text>
+      {showBack ? (
+        <View style={styles.todayHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={styles.todayBackButton}
+          >
+            <Text style={styles.todayBackButtonText}>
+              ←
+            </Text>
+          </Pressable>
 
-          <Text style={styles.count}>
-            Заказов: {orders.length}
-          </Text>
+          <View style={styles.todayHeaderText}>
+            <Text style={styles.todayTitle}>
+              Заказы
+            </Text>
+
+            <Text style={styles.todayCount}>
+              Заказов: {orders.length}
+            </Text>
+          </View>
         </View>
+      ) : (
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View>
+              <Text style={styles.title}>
+                Заказы
+              </Text>
 
-        <Pressable
-          style={styles.addButton}
-          onPress={() =>
-            router.push('/new-order')
-          }
-        >
-          <Text style={styles.addButtonText}>
-            +
-          </Text>
-        </Pressable>
-      </View>
+              <Text style={styles.count}>
+                Заказов: {orders.length}
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={styles.addButton}
+            onPress={() =>
+              router.push('/new-order')
+            }
+          >
+            <Text style={styles.addButtonText}>
+              +
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <TextInput
         style={styles.searchInput}
@@ -425,7 +464,8 @@ export default function Orders() {
                     style={[
                       styles.statusBadgeText,
                       {
-                        color: statusColors.color,
+                        color:
+                          statusColors.color,
                       },
                     ]}
                   >
@@ -491,9 +531,61 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
 
+  // ==========================================
+  // HEADER ЧЕРЕЗ TODAY
+  // ==========================================
+
+  todayHeader: {
+    position: 'relative',
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  todayBackButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+  },
+
+  todayBackButtonText: {
+    fontSize: 20,
+    lineHeight: 30,
+    color: '#111111',
+  },
+
+  todayHeaderText: {
+    alignItems: 'center',
+  },
+
+  todayTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111111',
+  },
+
+  todayCount: {
+    marginTop: 5,
+    fontSize: 15,
+    color: '#777777',
+    textAlign: 'left',
+  },
+
+  // ==========================================
+  // ОБЫЧНЫЙ HEADER ЧЕРЕЗ TAB
+  // ==========================================
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
 
@@ -525,6 +617,10 @@ const styles = StyleSheet.create({
     fontWeight: '300',
   },
 
+  // ==========================================
+  // SEARCH
+  // ==========================================
+
   searchInput: {
     marginTop: 24,
     height: 48,
@@ -534,6 +630,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111111',
   },
+
+  // ==========================================
+  // TABS
+  // ==========================================
 
   tabs: {
     flexDirection: 'row',
@@ -577,6 +677,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111111',
   },
+
+  // ==========================================
+  // LIST
+  // ==========================================
 
   list: {
     marginTop: 8,

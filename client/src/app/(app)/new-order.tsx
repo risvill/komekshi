@@ -15,6 +15,7 @@ import {
   consumeSelectedProducts,
 } from '@/services/orderSelection';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
@@ -317,6 +318,7 @@ export default function NewOrder() {
   }
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -848,6 +850,7 @@ export default function NewOrder() {
         </Pressable>
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

@@ -14,6 +14,8 @@ import {
   View,
 } from 'react-native';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import * as Contacts from 'expo-contacts';
 import { Feather } from '@expo/vector-icons';
 
@@ -154,6 +156,7 @@ export default function NewClient() {
   };
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -292,7 +295,7 @@ export default function NewClient() {
   )}
 </Pressable>
     </ScrollView>
-  );
+    </SafeAreaView>);
 }
 
 const styles = StyleSheet.create({

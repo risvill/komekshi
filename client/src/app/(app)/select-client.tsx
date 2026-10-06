@@ -19,6 +19,8 @@ import {
   View,
 } from 'react-native';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useAuth } from '@/context/AuthContext';
 
 import { getClients } from '@/services/clientsService';
@@ -117,6 +119,7 @@ export default function SelectClient() {
   }
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={
@@ -374,6 +377,7 @@ export default function SelectClient() {
        
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 }
 

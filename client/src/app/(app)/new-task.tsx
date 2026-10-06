@@ -17,6 +17,8 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { getOrders } from '@/services/ordersService';
 
 import { createTask } from '@/services/tasksService';
@@ -310,6 +312,7 @@ export default function NewTaskScreen() {
   };
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -656,6 +659,7 @@ export default function NewTaskScreen() {
         </Pressable>
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

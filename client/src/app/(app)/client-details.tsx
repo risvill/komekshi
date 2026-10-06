@@ -20,6 +20,8 @@ import {
   View,
 } from 'react-native';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useAuth } from '@/context/AuthContext';
 
 import {
@@ -180,7 +182,7 @@ export default function ClientDetailsScreen() {
   } = data;
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -458,7 +460,7 @@ export default function ClientDetailsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </>
+    </SafeAreaView>
   );
 }
 

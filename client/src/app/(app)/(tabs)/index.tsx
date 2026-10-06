@@ -302,7 +302,10 @@ export default function Today() {
 
           <Pressable
             onPress={() =>
-              router.push('/orders')
+              router.push({
+                pathname: '/orders',
+                params: { from: 'today' },
+              })
             }
             hitSlop={8}
           >

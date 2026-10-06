@@ -16,6 +16,8 @@ import * as Clipboard from 'expo-clipboard';
 
 import { useAuth } from '@/context/AuthContext';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import {
   getOrders,
   updateOrderStatus,
@@ -714,6 +716,7 @@ export default function OrderDetails() {
     );
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -2014,6 +2017,7 @@ export default function OrderDetails() {
         </View>
       </Modal>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

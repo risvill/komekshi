@@ -15,6 +15,7 @@ import {
   updateTaskStatus,
 } from '@/services/tasksService';
 import { Task, TaskStatus } from '@/types/task';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function TasksScreen() {
   const { token } = useAuth();
@@ -364,6 +365,7 @@ export default function TasksScreen() {
   );
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -474,6 +476,7 @@ export default function TasksScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

@@ -12,7 +12,7 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 import { createProduct } from '@/services/productsService';
-
+import { SafeAreaView } from 'react-native-safe-area-context';
 export default function NewProduct() {
   const { token } = useAuth();
 
@@ -85,6 +85,7 @@ export default function NewProduct() {
   };
 
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
     <View style={styles.container}>
       <Text style={styles.title}>New Product</Text>
 
@@ -174,6 +175,7 @@ export default function NewProduct() {
         </Text>
       </Pressable>
     </View>
+    </SafeAreaView>
   );
 }
 
