@@ -339,7 +339,7 @@ export default function TasksScreen() {
               style={[
                 styles.statusButtonText,
                 item.status === 'DONE' &&
-                  styles.statusButtonActive,
+                  styles.statusButtonTextActive,
               ]}
             >
               Готово
@@ -372,6 +372,16 @@ export default function TasksScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={styles.backButtonContainer}
+        >
+          <Text style={styles.backButton}>
+            ←
+          </Text>
+        </Pressable>
+
         <Text style={styles.title}>
           Задачи
         </Text>
@@ -481,12 +491,29 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    position: 'relative',
     marginBottom: 28,
+    minHeight: 44,
+  },
+
+  backButtonContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+  },
+
+  backButton: {
+    fontSize: 20,
+    lineHeight: 30,
+    color: '#111111',
   },
 
   title: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: '700',
     color: '#111111',
   },
@@ -498,6 +525,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'absolute',
+    right: 0,
   },
 
   addButtonText: {

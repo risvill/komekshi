@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function AppLayout() {
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+      style={{ flex: 1 }}
       edges={['top']}
     >
       <Tabs

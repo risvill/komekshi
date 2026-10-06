@@ -364,7 +364,7 @@ export default function TaskDetails() {
       <Pressable
         style={styles.backButton}
         onPress={() =>
-          router.replace('/tasks')
+          router.back()
         }
       >
         <Text style={styles.backButtonText}>

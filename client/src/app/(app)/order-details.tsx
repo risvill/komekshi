@@ -726,8 +726,8 @@ export default function OrderDetails() {
       <Pressable
         style={styles.backButton}
         onPress={() =>
-          router.replace(
-            '/orders'
+          router.back(
+          
           )
         }
       >
