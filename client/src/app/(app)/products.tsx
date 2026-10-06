@@ -184,7 +184,7 @@ export default function Products() {
         <View style={styles.header}>
           <Pressable
             onPress={() =>
-              router.replace('/more')
+              router.back()
             }
             hitSlop={8}
             style={styles.backButtonContainer}

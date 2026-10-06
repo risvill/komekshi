@@ -166,7 +166,7 @@ export default function NewClient() {
       <View style={styles.header}>
         <Pressable
           onPress={() =>
-            router.replace('/clients')
+            router.back()
           }
           hitSlop={8}
           style={styles.backButtonContainer}

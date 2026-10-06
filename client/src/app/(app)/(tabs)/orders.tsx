@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
   },
 
   todayTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: '#111111',
   },

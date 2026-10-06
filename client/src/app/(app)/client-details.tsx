@@ -192,7 +192,7 @@ export default function ClientDetailsScreen() {
           <Pressable
             style={styles.backButton}
             onPress={() =>
-              router.replace('/clients')
+              router.back()
             }
             hitSlop={8}
           >

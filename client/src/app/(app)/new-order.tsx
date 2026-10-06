@@ -329,7 +329,7 @@ export default function NewOrder() {
       <View style={styles.header}>
         <Pressable
           onPress={() =>
-            router.replace('/orders')
+            router.back()
           }
           hitSlop={8}
           style={styles.backButtonContainer}

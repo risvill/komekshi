@@ -323,7 +323,7 @@ export default function NewTaskScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.replace('/tasks')}
+          onPress={() => router.back()}
           hitSlop={8}
           style={styles.backButtonContainer}
         >

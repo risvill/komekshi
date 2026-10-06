@@ -8,6 +8,7 @@ export default function AppLayout() {
         contentStyle: {
           backgroundColor: '#FFFFFF',
         },
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="(tabs)" />
