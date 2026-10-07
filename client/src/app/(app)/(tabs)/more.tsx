@@ -1,6 +1,8 @@
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
 
@@ -39,6 +41,17 @@ export default function More() {
   const [phone, setPhone] =
     useState(user?.phone || '');
 
+  const sheetAnimation = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  const backdropAnimation = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  const [modalVisible, setModalVisible] =
+    useState(false);
+
   const startEditingAccount = () => {
     setBusinessName(
       user?.business_name || ''
@@ -46,7 +59,30 @@ export default function More() {
     setUserName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
+
+    sheetAnimation.setValue(0);
+    backdropAnimation.setValue(0);
+
+    setModalVisible(true);
     setEditingAccount(true);
+
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(sheetAnimation, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+
+        Animated.timing(backdropAnimation, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
   const cancelEditingAccount = () => {
@@ -54,13 +90,33 @@ export default function More() {
       return;
     }
 
-    setBusinessName(
-      user?.business_name || ''
-    );
-    setUserName(user?.name || '');
-    setEmail(user?.email || '');
-    setPhone(user?.phone || '');
-    setEditingAccount(false);
+    Animated.parallel([
+      Animated.timing(sheetAnimation, {
+        toValue: 0,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+
+      Animated.timing(backdropAnimation, {
+        toValue: 0,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        setModalVisible(false);
+        setEditingAccount(false);
+
+        setBusinessName(
+          user?.business_name || ''
+        );
+        setUserName(user?.name || '');
+        setEmail(user?.email || '');
+        setPhone(user?.phone || '');
+      }
+    });
   };
 
   const saveAccount = async () => {
@@ -91,7 +147,28 @@ export default function More() {
           businessName.trim() || null,
       });
 
-      setEditingAccount(false);
+      setSavingAccount(false);
+
+      Animated.parallel([
+        Animated.timing(sheetAnimation, {
+          toValue: 0,
+          duration: 240,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+
+        Animated.timing(backdropAnimation, {
+          toValue: 0,
+          duration: 240,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setModalVisible(false);
+          setEditingAccount(false);
+        }
+      });
 
       Alert.alert(
         'Готово',
@@ -103,12 +180,12 @@ export default function More() {
         error
       );
 
+      setSavingAccount(false);
+
       Alert.alert(
         'Ошибка',
         'Не удалось изменить данные аккаунта'
       );
-    } finally {
-      setSavingAccount(false);
     }
   };
 
@@ -409,9 +486,9 @@ export default function More() {
       </ScrollView>
 
       <Modal
-        visible={editingAccount}
+        visible={modalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={cancelEditingAccount}
       >
         <KeyboardAvoidingView
@@ -422,12 +499,40 @@ export default function More() {
               : undefined
           }
         >
-          <Pressable
-            style={styles.modalBackdrop}
-            onPress={cancelEditingAccount}
-          />
+          <Animated.View
+            style={[
+              styles.modalBackdrop,
+              {
+                opacity:
+                  backdropAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.35],
+                  }),
+              },
+            ]}
+          >
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={cancelEditingAccount}
+            />
+          </Animated.View>
 
-          <View style={styles.bottomSheet}>
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              {
+                transform: [
+                  {
+                    translateY:
+                      sheetAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [700, 0],
+                      }),
+                  },
+                ],
+              },
+            ]}
+          >
             <View style={styles.sheetHandle} />
 
             <View style={styles.sheetHeader}>
@@ -555,7 +660,7 @@ export default function More() {
                 </Pressable>
               </View>
             </ScrollView>
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
     </>
@@ -800,7 +905,7 @@ const styles = StyleSheet.create({
 
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: '#000000',
   },
 
   bottomSheet: {
@@ -932,8 +1037,8 @@ const styles = StyleSheet.create({
   },
 
   menuDivider: {
-  height: 1,
-  backgroundColor: '#E5E5E5',
-  marginLeft: 58,
-},
+    height: 1,
+    backgroundColor: '#E5E5E5',
+    marginLeft: 58,
+  },
 });

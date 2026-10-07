@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
 
   contentContainer: {
     padding: 24,
-    paddingBottom: 50,
+    paddingBottom: 100,
   },
 
   center: {

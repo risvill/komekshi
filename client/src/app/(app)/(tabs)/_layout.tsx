@@ -1,12 +1,15 @@
 import { Tabs, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  Animated,
+  Easing,
   View,
   Pressable,
   StyleSheet,
   Text,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useRef } from 'react';
 
 function FloatingTabBar() {
   const pathname = usePathname();
@@ -49,7 +52,10 @@ function FloatingTabBar() {
       return pathname === '/' || pathname === '/index';
     }
 
-    return pathname === route || pathname.startsWith(`${route}/`);
+    return (
+      pathname === route ||
+      pathname.startsWith(`${route}/`)
+    );
   };
 
   const handlePress = (route: string) => {
@@ -78,9 +84,17 @@ function FloatingTabBar() {
               ]}
             >
               <Ionicons
-                name={active ? tab.activeIcon : tab.icon}
+                name={
+                  active
+                    ? tab.activeIcon
+                    : tab.icon
+                }
                 size={22}
-                color={active ? '#FFFFFF' : '#6F6F73'}
+                color={
+                  active
+                    ? '#FFFFFF'
+                    : '#6F6F73'
+                }
               />
 
               <Text
@@ -100,27 +114,72 @@ function FloatingTabBar() {
 }
 
 export default function TabsLayout() {
+  const pathname = usePathname();
+
+  const opacity = useRef(
+    new Animated.Value(1)
+  ).current;
+
+  const translateY = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  useEffect(() => {
+    opacity.setValue(0);
+    translateY.setValue(4);
+
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [pathname]);
+
   return (
     <SafeAreaView
       style={styles.safeArea}
       edges={['top']}
     >
       <View style={styles.container}>
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-
-            tabBarStyle: {
-              display: 'none',
+        <Animated.View
+          style={[
+            styles.tabsContainer,
+            {
+              opacity,
+              transform: [
+                {
+                  translateY,
+                },
+              ],
             },
-          }}
+          ]}
         >
-          <Tabs.Screen name="index" />
-          <Tabs.Screen name="orders" />
-          <Tabs.Screen name="calendar" />
-          <Tabs.Screen name="clients" />
-          <Tabs.Screen name="more" />
-        </Tabs>
+          <Tabs
+            screenOptions={{
+              headerShown: false,
+
+              tabBarStyle: {
+                display: 'none',
+              },
+            }}
+          >
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="orders" />
+            <Tabs.Screen name="calendar" />
+            <Tabs.Screen name="clients" />
+            <Tabs.Screen name="more" />
+          </Tabs>
+        </Animated.View>
 
         <View style={styles.bottomArea}>
           <FloatingTabBar />
@@ -139,6 +198,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+
+  tabsContainer: {
+    flex: 1,
   },
 
   bottomArea: {
