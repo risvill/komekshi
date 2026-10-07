@@ -265,54 +265,57 @@ export default function Orders() {
       }
       showsVerticalScrollIndicator={false}
     >
+      <View style={showBack ? styles.todayHeader : styles.header}>
       {showBack ? (
-        <View style={styles.todayHeader}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            style={styles.todayBackButton}
-          >
-            <Text style={styles.todayBackButtonText}>
-              ←
-            </Text>
-          </Pressable>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={styles.todayBackButton}
+        >
+          <Text style={styles.todayBackButtonText}>
+            ←
+          </Text>
+        </Pressable>
+      ) : null}
 
-          <View style={styles.todayHeaderText}>
-            <Text style={styles.todayTitle}>
-              Заказы
-            </Text>
+      <View
+        style={
+          showBack
+            ? styles.todayHeaderText
+            : styles.headerLeft
+        }
+      >
+        <Text
+          style={
+            showBack
+              ? styles.todayTitle
+              : styles.title
+          }
+        >
+          Заказы
+        </Text>
 
-            <Text style={styles.todayCount}>
-              Заказов: {orders.length}
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View>
-              <Text style={styles.title}>
-                Заказы
-              </Text>
+        <Text
+          style={
+            showBack
+              ? styles.todayCount
+              : styles.count
+          }
+        >
+          Заказов: {orders.length}
+        </Text>
+      </View>
 
-              <Text style={styles.count}>
-                Заказов: {orders.length}
-              </Text>
-            </View>
-          </View>
-
-          <Pressable
-            style={styles.addButton}
-            onPress={() =>
-              router.push('/new-order')
-            }
-          >
-            <Text style={styles.addButtonText}>
-              +
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      <Pressable
+        style={styles.addButton}
+        onPress={() => router.push('/new-order')}
+        hitSlop={8}
+      >
+        <Text style={styles.addButtonText}>
+          +
+        </Text>
+      </Pressable>
+    </View>
 
       <TextInput
         style={styles.searchInput}
@@ -536,19 +539,16 @@ const styles = StyleSheet.create({
   // ==========================================
 
   todayHeader: {
-    position: 'relative',
     minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  todayBackButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  todayBackButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    position: 'absolute',
-    left: 0,
   },
 
   todayBackButtonText: {
@@ -558,6 +558,7 @@ const styles = StyleSheet.create({
   },
 
   todayHeaderText: {
+    flex: 1,
     alignItems: 'center',
   },
 
@@ -571,7 +572,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 15,
     color: '#777777',
-    textAlign: 'left',
+    textAlign: 'center',
   },
 
   // ==========================================
@@ -585,8 +586,8 @@ const styles = StyleSheet.create({
   },
 
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
   },
 
   title: {

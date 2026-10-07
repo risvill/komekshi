@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   createContext,
   PropsWithChildren,
@@ -6,6 +7,8 @@ import {
   useEffect,
   useState,
 } from 'react';
+
+import { apiFetch } from '@/services/api';
 
 type User = {
   id: string;
@@ -29,9 +32,13 @@ type AuthContextType = {
   }) => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(
+  undefined
+);
 
-export function AuthProvider({ children }: PropsWithChildren) {
+export function AuthProvider({
+  children,
+}: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,15 +46,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const savedToken = await AsyncStorage.getItem('token');
-        const savedUser = await AsyncStorage.getItem('user');
+        const savedToken =
+          await AsyncStorage.getItem('token');
+
+        const savedUser =
+          await AsyncStorage.getItem('user');
 
         if (savedToken && savedUser) {
           setToken(savedToken);
           setUser(JSON.parse(savedUser));
         }
       } catch (error) {
-        console.error('Failed to restore session:', error);
+        console.error(
+          'Failed to restore session:',
+          error
+        );
       } finally {
         setLoading(false);
       }
@@ -56,26 +69,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     restoreSession();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const response = await fetch('http://127.0.0.1:3000/login', {
+  const login = async (
+    email: string,
+    password: string
+  ) => {
+    const response = await apiFetch('/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        email,
+        password,
+      }),
     });
 
-    const data = await response.json();
+    await AsyncStorage.setItem(
+      'token',
+      response.token
+    );
 
-    if (!response.ok) {
-      throw new Error(data.message || 'Не удалось войти');
-    }
+    await AsyncStorage.setItem(
+      'user',
+      JSON.stringify(response.user)
+    );
 
-    await AsyncStorage.setItem('token', data.token);
-    await AsyncStorage.setItem('user', JSON.stringify(data.user));
-
-    setToken(data.token);
-    setUser(data.user);
+    setToken(response.token);
+    setUser(response.user);
   };
 
   const logout = async () => {
@@ -96,25 +113,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw new Error('Нет авторизации');
     }
 
-    const response = await fetch(
-      'http://127.0.0.1:3000/me',
+    const result = await apiFetch(
+      '/me',
       {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify(data),
-      }
+      },
+      token
     );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        result.message || 'Не удалось изменить данные'
-      );
-    }
 
     await AsyncStorage.setItem(
       'user',
@@ -126,15 +132,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   return (
     <AuthContext.Provider
-    value={{
-      user,
-      token,
-      loading,
-      login,
-      logout,
-      updateUser,
-    }}
-  >
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        logout,
+        updateUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -144,10 +150,10 @@ export function useAuth() {
   const context = useContext(AuthContext);
 
   if (!context) {
-    throw new Error('useAuth must be used inside AuthProvider');
+    throw new Error(
+      'useAuth must be used inside AuthProvider'
+    );
   }
 
   return context;
 }
-
-

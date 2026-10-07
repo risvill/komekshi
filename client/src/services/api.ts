@@ -1,4 +1,12 @@
-const API_URL = 'http://127.0.0.1:3000';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+const API_URL =
+  Platform.OS === 'ios' && Constants.isDevice
+    ? 'http://172.20.10.2:3000'
+    : 'http://127.0.0.1:3000';
+
+export { API_URL };
 
 export async function apiFetch(
   endpoint: string,

@@ -7,7 +7,7 @@
     "@react-native-community/datetimepicker": "8.2.0",
     "expo": "~52.0.0",
     "expo-asset": "~11.0.5",
-    "expo-clipboard": "^6.0.3",
+    "expo-clipboard": "~7.0.1",
     "expo-constants": "~17.0.8",
     "expo-contacts": "~14.0.5",
     "expo-device": "~7.0.3",
