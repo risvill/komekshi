@@ -2,6 +2,8 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -315,6 +317,23 @@ export default function OrderDetails() {
 
   const [savingAccount, setSavingAccount] =
     useState(false);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => setKeyboardHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -1605,6 +1624,7 @@ export default function OrderDetails() {
         }
         animationType="slide"
         transparent
+        statusBarTranslucent
         onRequestClose={() =>
           setPaymentModalVisible(
             false
@@ -1616,10 +1636,12 @@ export default function OrderDetails() {
             styles.modalOverlay
           }
         >
-          <View
-            style={
-              styles.modalContent
-            }
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 15 : 15 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
           >
             <Text
               style={
@@ -1843,7 +1865,7 @@ export default function OrderDetails() {
                 </Text>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -1855,6 +1877,7 @@ export default function OrderDetails() {
         }
         animationType="slide"
         transparent
+        statusBarTranslucent
         onRequestClose={() =>
           setAccountModalVisible(
             false
@@ -1866,10 +1889,12 @@ export default function OrderDetails() {
             styles.modalOverlay
           }
         >
-          <View
-            style={
-              styles.modalContent
-            }
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 15 : 15 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
           >
             <Text
               style={
@@ -2013,7 +2038,7 @@ export default function OrderDetails() {
                 </Text>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </ScrollView>
@@ -2479,6 +2504,7 @@ const styles = StyleSheet.create({
     padding: 24,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    maxHeight: '90%',
   },
 
   modalTitle: {

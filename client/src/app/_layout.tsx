@@ -1,23 +1,17 @@
-import { Redirect, Stack, usePathname } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Redirect, Stack, useSegments } from 'expo-router';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 function AuthGuard() {
   const { user, loading } = useAuth();
-  const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
+  const segments = useSegments();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || loading) {
+  if (loading) {
     return null;
   }
 
-  const onLogin = pathname === '/login';
-  const inApp = pathname.startsWith('/(app)');
+  const inApp = segments[0] === '(app)';
+  const onLogin = segments[0] === 'login';
 
   if (!user && inApp) {
     return <Redirect href="/login" />;

@@ -1,11 +1,16 @@
+
 import {
   router,
   useLocalSearchParams,
 } from 'expo-router';
-import { useState } from 'react';
+
+import { useState, useEffect, useRef  } from 'react';
+
 import {
   Alert,
   ActivityIndicator,
+  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,9 +37,44 @@ export default function NewClient() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [creating, setCreating] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios'
+        ? 'keyboardWillShow'
+        : 'keyboardDidShow',
+      (event) => {
+  setKeyboardHeight(event.endCoordinates.height);
+
+  setTimeout(() => {
+    scrollRef.current?.scrollTo({
+      y: 110,
+      animated: true,
+    });
+  }, 250);
+}
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios'
+        ? 'keyboardWillHide'
+        : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const handleCreate = async () => {
-    if (!token) {
+    if (!token || creating) {
       return;
     }
 
@@ -56,6 +96,8 @@ export default function NewClient() {
           phone: phone.trim() || undefined,
         }
       );
+
+      Keyboard.dismiss();
 
       if (fromOrder === 'true') {
         router.replace({
@@ -128,10 +170,11 @@ export default function NewClient() {
         token,
         {
           name: contactName,
-          phone:
-            contactPhone || undefined,
+          phone: contactPhone || undefined,
         }
       );
+
+      Keyboard.dismiss();
 
       if (fromOrder === 'true') {
         router.replace({
@@ -156,149 +199,173 @@ export default function NewClient() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={['top']}
     >
-      <View style={styles.header}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingBottom:
+              keyboardHeight > 0
+                ? keyboardHeight + 40
+                : 40,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={
+          Platform.OS === 'ios'
+            ? 'interactive'
+            : 'on-drag'
+        }
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={false}
+      >
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={styles.backButtonContainer}
+          >
+            <Text style={styles.backButton}>
+              ←
+            </Text>
+          </Pressable>
+
+          <View style={styles.headerText}>
+            <Text style={styles.title}>
+              Новый клиент
+            </Text>
+
+            <Text style={styles.subtitle}>
+              Добавьте клиента в Komekshi
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>
+          ИЗ КОНТАКТОВ
+        </Text>
+
         <Pressable
-          onPress={() =>
-            router.back()
-          }
-          hitSlop={8}
-          style={styles.backButtonContainer}
+          style={[
+            styles.contactCard,
+            creating && styles.disabledCard,
+          ]}
+          onPress={handlePickContact}
+          disabled={creating}
         >
-          <Text style={styles.backButton}>
-            ←
+          <View style={styles.contactIcon}>
+            <Text style={styles.contactIconText}>
+              +
+            </Text>
+          </View>
+
+          <View style={styles.contactInfo}>
+            <Text style={styles.contactTitle}>
+              Выбрать контакт
+            </Text>
+
+            <Text style={styles.contactSubtitle}>
+              Имя и телефон заполнятся автоматически
+            </Text>
+          </View>
+
+          <Text style={styles.arrow}>
+            ›
           </Text>
         </Pressable>
 
-        <View style={styles.headerText}>
-          <Text style={styles.title}>
-            Новый клиент
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+
+          <Text style={styles.dividerText}>
+            ИЛИ ВРУЧНУЮ
           </Text>
 
-          <Text style={styles.subtitle}>
-            Добавьте клиента в Komekshi
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.sectionTitle}>
-        ИЗ КОНТАКТОВ
-      </Text>
-
-      <Pressable
-        style={[
-          styles.contactCard,
-          creating &&
-            styles.disabledCard,
-        ]}
-        onPress={handlePickContact}
-        disabled={creating}
-      >
-        <View style={styles.contactIcon}>
-          <Text style={styles.contactIconText}>
-            +
-          </Text>
+          <View style={styles.dividerLine} />
         </View>
 
-        <View style={styles.contactInfo}>
-          <Text style={styles.contactTitle}>
-            Выбрать контакт
+        <View style={styles.formCard}>
+          <Text style={styles.formTitle}>
+            Данные клиента
           </Text>
 
-          <Text style={styles.contactSubtitle}>
-            Имя и телефон заполнятся автоматически
-          </Text>
+          <View style={styles.field}>
+            <Feather
+              name="user"
+              size={19}
+              color="#777777"
+              style={styles.fieldIcon}
+              accessible={false}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Имя клиента"
+              placeholderTextColor="#999999"
+              value={name}
+              onChangeText={setName}
+              editable={!creating}
+              autoCapitalize="words"
+              returnKeyType="next"
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Feather
+              name="phone"
+              size={18}
+              color="#777777"
+              style={styles.fieldIcon}
+              accessible={false}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="+7 777 123 45 67"
+              placeholderTextColor="#999999"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              editable={!creating}
+            />
+          </View>
         </View>
 
-        <Text style={styles.arrow}>
-          ›
-        </Text>
-      </Pressable>
-
-      <View style={styles.dividerRow}>
-        <View style={styles.dividerLine} />
-
-        <Text style={styles.dividerText}>
-          ИЛИ ВРУЧНУЮ
-        </Text>
-
-        <View style={styles.dividerLine} />
-      </View>
-
-      <View style={styles.formCard}>
-  <Text style={styles.formTitle}>
-    Данные клиента
-  </Text>
-
-  <View style={styles.field}>
-    <Feather
-      name="user"
-      size={19}
-      color="#777777"
-      style={styles.fieldIcon}
-      accessible={false}
-    />
-    <TextInput
-      style={styles.input}
-      placeholder="Имя клиента"
-      placeholderTextColor="#999999"
-      value={name}
-      onChangeText={setName}
-      editable={!creating}
-      autoCapitalize="words"
-    />
-  </View>
-
-  <View style={styles.field}>
-    <Feather
-      name="phone"
-      size={18}
-      color="#777777"
-      style={styles.fieldIcon}
-      accessible={false}
-    />
-    <TextInput
-      style={styles.input}
-      placeholder="+7 777 123 45 67"
-      placeholderTextColor="#999999"
-      value={phone}
-      onChangeText={setPhone}
-      keyboardType="phone-pad"
-      editable={!creating}
-    />
-  </View>
-</View>
-
-<Pressable
-  style={[
-    styles.createButton,
-    creating && styles.buttonDisabled,
-  ]}
-  onPress={() => void handleCreate()}
-  disabled={creating}
->
-  {creating ? (
-    <ActivityIndicator
-      color="#FFFFFF"
-      size="small"
-    />
-  ) : (
-    <Text style={styles.createButtonText}>
-      Создать клиента
-    </Text>
-  )}
-</Pressable>
-    </ScrollView>
-    </SafeAreaView>);
+        <Pressable
+          style={[
+            styles.createButton,
+            creating && styles.buttonDisabled,
+          ]}
+          onPress={() => void handleCreate()}
+          disabled={creating}
+        >
+          {creating ? (
+            <ActivityIndicator
+              color="#FFFFFF"
+              size="small"
+            />
+          ) : (
+            <Text style={styles.createButtonText}>
+              Создать клиента
+            </Text>
+          )}
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -307,6 +374,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 24,
     paddingBottom: 40,
+    flexGrow: 1,
   },
 
   header: {
@@ -315,6 +383,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
+
   backButtonContainer: {
     width: 32,
     height: 32,
@@ -322,8 +391,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     left: 0,
+    zIndex: 1,
   },
-
 
   backButton: {
     fontSize: 20,
@@ -432,59 +501,59 @@ const styles = StyleSheet.create({
   },
 
   formCard: {
-  backgroundColor: '#F7F7F7',
-  borderRadius: 16,
-  padding: 19,
+    backgroundColor: '#F7F7F7',
+    borderRadius: 16,
+    padding: 19,
     paddingBottom: 8,
-},
+  },
 
-formTitle: {
-  fontSize: 18,
-  lineHeight: 23,
-  fontWeight: '700',
-  color: '#111111',
-  marginBottom: 20,
-},
+  formTitle: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '700',
+    color: '#111111',
+    marginBottom: 20,
+  },
 
-field: {
-  minHeight: 54,
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: 16,
-  paddingHorizontal: 14,
-  borderRadius: 12,
-  backgroundColor: '#FFFFFF',
-},
+  field: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+  },
 
-fieldIcon: {
-  marginRight: 12,
-},
+  fieldIcon: {
+    marginRight: 12,
+  },
 
-input: {
-  flex: 1,
-  minWidth: 0,
-  height: 52,
-  paddingHorizontal: 0,
-  fontSize: 15,
-  color: '#111111',
-},
+  input: {
+    flex: 1,
+    minWidth: 0,
+    height: 52,
+    paddingHorizontal: 0,
+    fontSize: 15,
+    color: '#111111',
+  },
 
-createButton: {
-  marginTop: 20,
-  minHeight: 52,
-  backgroundColor: '#111111',
-  borderRadius: 12,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+  createButton: {
+    marginTop: 20,
+    minHeight: 52,
+    backgroundColor: '#111111',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-buttonDisabled: {
-  opacity: 0.55,
-},
+  buttonDisabled: {
+    opacity: 0.55,
+  },
 
-createButtonText: {
-  fontSize: 16,
-  fontWeight: '600',
-  color: '#FFFFFF',
-},
+  createButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
 });

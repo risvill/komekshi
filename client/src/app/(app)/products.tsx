@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -40,6 +40,22 @@ export default function Products() {
     useState('');
 
   const [creating, setCreating] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => setKeyboardHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const loadProducts = async () => {
     if (!token) {
@@ -88,6 +104,7 @@ export default function Products() {
 
   const closeCreateModal = () => {
     if (creating) return;
+    Keyboard.dismiss();
 
     setShowCreate(false);
     setName('');
@@ -154,6 +171,7 @@ export default function Products() {
         ...current,
       ]);
 
+      Keyboard.dismiss();
       setShowCreate(false);
       setName('');
       setPrice('');
@@ -319,14 +337,7 @@ export default function Products() {
           closeCreateModal
         }
       >
-        <KeyboardAvoidingView
-          style={styles.bottomSheetOverlay}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
+        <View style={styles.bottomSheetOverlay}>
           <Pressable
             style={
               styles.bottomSheetBackdrop
@@ -336,12 +347,22 @@ export default function Products() {
           />
 
           <View
-            style={styles.bottomSheet}
+            style={[
+              styles.bottomSheet,
+              { paddingBottom: keyboardHeight + 24 },
+            ]}
           >
             <View
               style={styles.sheetHandle}
             />
 
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetScrollContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+            >
             <View
               style={styles.sheetHeader}
             >
@@ -392,7 +413,6 @@ export default function Products() {
               onChangeText={setName}
               editable={!creating}
               autoCapitalize="sentences"
-              autoFocus
             />
 
             {/* PRICE */}
@@ -551,8 +571,9 @@ export default function Products() {
                 Отмена
               </Text>
             </Pressable>
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -730,12 +751,22 @@ const styles = StyleSheet.create({
   },
 
   bottomSheet: {
+    maxHeight: '90%',
     paddingHorizontal: 24,
     paddingTop: 10,
     paddingBottom: 30,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: '#FFFFFF',
+  },
+
+  sheetScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+
+  sheetScrollContent: {
+    paddingBottom: 4,
   },
 
   sheetHandle: {

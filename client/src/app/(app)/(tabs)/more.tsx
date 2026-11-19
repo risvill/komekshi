@@ -3,7 +3,7 @@ import {
   Alert,
   Animated,
   Easing,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -52,6 +52,24 @@ export default function More() {
   const [modalVisible, setModalVisible] =
     useState(false);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => setKeyboardHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const startEditingAccount = () => {
     setBusinessName(
       user?.business_name || ''
@@ -63,6 +81,7 @@ export default function More() {
     sheetAnimation.setValue(0);
     backdropAnimation.setValue(0);
 
+    setKeyboardHeight(0);
     setModalVisible(true);
     setEditingAccount(true);
 
@@ -491,14 +510,7 @@ export default function More() {
         animationType="none"
         onRequestClose={cancelEditingAccount}
       >
-        <KeyboardAvoidingView
-          style={styles.modalRoot}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
+        <View style={styles.modalRoot}>
           <Animated.View
             style={[
               styles.modalBackdrop,
@@ -520,6 +532,7 @@ export default function More() {
           <Animated.View
             style={[
               styles.bottomSheet,
+              { paddingBottom: keyboardHeight + 24 },
               {
                 transform: [
                   {
@@ -559,11 +572,11 @@ export default function More() {
             </View>
 
             <ScrollView
+              style={styles.sheetScroll}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={
-                styles.sheetContent
-              }
+              keyboardDismissMode="interactive"
+              contentContainerStyle={styles.sheetContent}
             >
               <Text style={styles.inputLabel}>
                 НАЗВАНИЕ БИЗНЕСА
@@ -661,7 +674,7 @@ export default function More() {
               </View>
             </ScrollView>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </>
   );
@@ -912,7 +925,7 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     paddingTop: 10,
     paddingHorizontal: 24,
-    paddingBottom: 30,
+    paddingBottom: 24,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: '#FFFFFF',
@@ -970,8 +983,13 @@ const styles = StyleSheet.create({
     color: '#555555',
   },
 
+  sheetScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+
   sheetContent: {
-    paddingBottom: 4,
+    paddingBottom: 24,
   },
 
   inputLabel: {

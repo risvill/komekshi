@@ -1,15 +1,16 @@
+
 import {
   router,
   useLocalSearchParams,
   useFocusEffect,
 } from 'expo-router';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -21,7 +22,6 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { useAuth } from '@/context/AuthContext';
 
 import {
@@ -32,28 +32,40 @@ import {
 
 export default function ClientDetailsScreen() {
   const { token } = useAuth();
+  const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+  const [data, setData] = useState<ClientDetails | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [data, setData] =
-    useState<ClientDetails | null>(null);
+  const [editingClient, setEditingClient] = useState(false);
+  const [savingClient, setSavingClient] = useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const [editingClient, setEditingClient] =
-    useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios'
+        ? 'keyboardWillShow'
+        : 'keyboardDidShow',
+      (event) => {
+        setKeyboardHeight(event.endCoordinates.height);
+      }
+    );
 
-  const [savingClient, setSavingClient] =
-    useState(false);
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios'
+        ? 'keyboardWillHide'
+        : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
 
-  const [clientName, setClientName] =
-    useState('');
-
-  const [clientPhone, setClientPhone] =
-    useState('');
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const loadClient = async () => {
     if (!token || !id) {
@@ -62,17 +74,10 @@ export default function ClientDetailsScreen() {
     }
 
     try {
-      const result = await getClientDetails(
-        token,
-        id
-      );
-
+      const result = await getClientDetails(token, id);
       setData(result);
     } catch (error) {
-      console.error(
-        'Failed to load client details:',
-        error
-      );
+      console.error('Failed to load client details:', error);
     } finally {
       setLoading(false);
     }
@@ -85,55 +90,44 @@ export default function ClientDetailsScreen() {
   );
 
   const openEditModal = () => {
-    if (!data) {
-      return;
-    }
+    if (!data) return;
 
     setClientName(data.client.name);
     setClientPhone(data.client.phone || '');
+    setKeyboardHeight(0);
     setEditingClient(true);
   };
 
   const closeEditModal = () => {
-    if (savingClient) {
-      return;
-    }
+    if (savingClient) return;
 
+    Keyboard.dismiss();
     setEditingClient(false);
+    setKeyboardHeight(0);
   };
 
   const saveClient = async () => {
-    if (!token || !data) {
-      return;
-    }
+    if (!token || !data) return;
 
     if (!clientName.trim()) {
-      Alert.alert(
-        'Ошибка',
-        'Введите имя клиента'
-      );
+      Alert.alert('Ошибка', 'Введите имя клиента');
       return;
     }
 
     try {
       setSavingClient(true);
 
-      const updatedClient =
-        await updateClient(
-          token,
-          data.client.id,
-          {
-            name: clientName.trim(),
-            phone:
-              clientPhone.trim() ||
-              undefined,
-          }
-        );
+      const updatedClient = await updateClient(
+        token,
+        data.client.id,
+        {
+          name: clientName.trim(),
+          phone: clientPhone.trim() || undefined,
+        }
+      );
 
       setData((currentData) => {
-        if (!currentData) {
-          return currentData;
-        }
+        if (!currentData) return currentData;
 
         return {
           ...currentData,
@@ -141,12 +135,11 @@ export default function ClientDetailsScreen() {
         };
       });
 
+      Keyboard.dismiss();
       setEditingClient(false);
+      setKeyboardHeight(0);
     } catch (error) {
-      console.error(
-        'Failed to update client:',
-        error
-      );
+      console.error('Failed to update client:', error);
 
       Alert.alert(
         'Ошибка',
@@ -175,11 +168,7 @@ export default function ClientDetailsScreen() {
     );
   }
 
-  const {
-    client,
-    orders,
-    latest_address,
-  } = data;
+  const { client, orders, latest_address } = data;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
@@ -191,35 +180,25 @@ export default function ClientDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             hitSlop={8}
           >
-            <Text style={styles.backIcon}>
-              ←
-            </Text>
+            <Text style={styles.backIcon}>←</Text>
           </Pressable>
 
           <Pressable
             style={styles.editButton}
             onPress={openEditModal}
           >
-            <Text style={styles.editText}>
-              Изменить
-            </Text>
+            <Text style={styles.editText}>Изменить</Text>
           </Pressable>
         </View>
 
         <View style={styles.profileHeader}>
-          <Text style={styles.title}>
-            {client.name}
-          </Text>
+          <Text style={styles.title}>{client.name}</Text>
 
           {client.phone && (
-            <Text style={styles.phone}>
-              {client.phone}
-            </Text>
+            <Text style={styles.phone}>{client.phone}</Text>
           )}
         </View>
 
@@ -233,8 +212,7 @@ export default function ClientDetailsScreen() {
           </Text>
 
           <Text style={styles.infoValue}>
-            {latest_address ||
-              'Адрес ещё не указан'}
+            {latest_address || 'Адрес ещё не указан'}
           </Text>
         </View>
 
@@ -268,9 +246,7 @@ export default function ClientDetailsScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/order-details',
-                    params: {
-                      id: order.id,
-                    },
+                    params: { id: order.id },
                   })
                 }
               >
@@ -285,9 +261,7 @@ export default function ClientDetailsScreen() {
 
                     <Text style={styles.orderId}>
                       Заказ #
-                      {order.id
-                        .slice(0, 8)
-                        .toUpperCase()}
+                      {order.id.slice(0, 8).toUpperCase()}
                     </Text>
                   </View>
 
@@ -297,49 +271,39 @@ export default function ClientDetailsScreen() {
                 </View>
 
                 <View style={styles.items}>
-                  {order.items.map(
-                    (item) => (
-                      <Text
-                        key={item.id}
-                        style={styles.item}
-                      >
-                        {item.name}
-                        {' · '}
-                        {item.quantity}{' '}
-                        {item.unit === 'portion'
-                          ? 'порц.'
-                          : 'шт.'}
-                      </Text>
-                    )
-                  )}
+                  {order.items.map((item) => (
+                    <Text
+                      key={item.id}
+                      style={styles.item}
+                    >
+                      {item.name}
+                      {' · '}
+                      {item.quantity}{' '}
+                      {item.unit === 'portion'
+                        ? 'порц.'
+                        : 'шт.'}
+                    </Text>
+                  ))}
                 </View>
 
                 <View style={styles.orderBottom}>
                   <View
                     style={[
                       styles.statusBadge,
-                      getStatusStyle(
-                        order.status
-                      ),
+                      getStatusStyle(order.status),
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusText,
-                        getStatusTextStyle(
-                          order.status
-                        ),
+                        getStatusTextStyle(order.status),
                       ]}
                     >
-                      {getStatusLabel(
-                        order.status
-                      )}
+                      {getStatusLabel(order.status)}
                     </Text>
                   </View>
 
-                  <Text style={styles.arrow}>
-                    ›
-                  </Text>
+                  <Text style={styles.arrow}>›</Text>
                 </View>
               </Pressable>
             ))}
@@ -347,28 +311,19 @@ export default function ClientDetailsScreen() {
         )}
       </ScrollView>
 
+      {/* EDIT CLIENT BOTTOM SHEET */}
+
       <Modal
         visible={editingClient}
         transparent
         animationType="slide"
         onRequestClose={closeEditModal}
       >
-        <KeyboardAvoidingView
-          style={styles.modalRoot}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
+        <View style={styles.bottomSheetOverlay}>
           <Pressable
-            style={styles.modalOverlay}
+            style={styles.bottomSheetBackdrop}
             onPress={closeEditModal}
-          />
-
-          <View
-            pointerEvents="none"
-            style={styles.bottomWhiteSpace}
+            disabled={savingClient}
           />
 
           <View style={styles.bottomSheet}>
@@ -385,80 +340,87 @@ export default function ClientDetailsScreen() {
                 disabled={savingClient}
                 hitSlop={8}
               >
-                <Text style={styles.closeText}>
-                  ×
-                </Text>
+                <Text style={styles.closeText}>×</Text>
               </Pressable>
             </View>
 
-            <Text style={styles.inputLabel}>
-              ИМЯ
-            </Text>
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={[
+                styles.sheetContent,
+                {
+                  paddingBottom:
+                    keyboardHeight > 0
+                      ? keyboardHeight + 16
+                      : 4,
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.inputLabel}>
+                ИМЯ
+              </Text>
 
-            <TextInput
-              style={styles.input}
-              value={clientName}
-              onChangeText={setClientName}
-              placeholder="Имя клиента"
-              placeholderTextColor="#999999"
-              editable={!savingClient}
-              autoCapitalize="words"
-            />
+              <TextInput
+                style={styles.input}
+                value={clientName}
+                onChangeText={setClientName}
+                placeholder="Имя клиента"
+                placeholderTextColor="#999999"
+                editable={!savingClient}
+                autoCapitalize="words"
+              />
 
-            <Text style={styles.inputLabel}>
-              ТЕЛЕФОН
-            </Text>
+              <Text style={styles.inputLabel}>
+                ТЕЛЕФОН
+              </Text>
 
-            <TextInput
-              style={styles.input}
-              value={clientPhone}
-              onChangeText={setClientPhone}
-              placeholder="+7 777 123 45 67"
-              placeholderTextColor="#999999"
-              keyboardType="phone-pad"
-              editable={!savingClient}
-            />
+              <TextInput
+                style={styles.input}
+                value={clientPhone}
+                onChangeText={setClientPhone}
+                placeholder="+7 777 123 45 67"
+                placeholderTextColor="#999999"
+                keyboardType="phone-pad"
+                editable={!savingClient}
+              />
 
-            <View style={styles.sheetActions}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={closeEditModal}
-                disabled={savingClient}
-              >
-                <Text
-                  style={styles.cancelButtonText}
+              <View style={styles.sheetActions}>
+                <Pressable
+                  style={styles.cancelButton}
+                  onPress={closeEditModal}
+                  disabled={savingClient}
                 >
-                  Отмена
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.saveButton,
-                  savingClient &&
-                    styles.buttonDisabled,
-                ]}
-                onPress={() =>
-                  void saveClient()
-                }
-                disabled={savingClient}
-              >
-                {savingClient ? (
-                  <ActivityIndicator
-                    size="small"
-                    color="#FFFFFF"
-                  />
-                ) : (
-                  <Text
-                    style={styles.saveButtonText}
-                  >
-                    Сохранить
+                  <Text style={styles.cancelButtonText}>
+                    Отмена
                   </Text>
-                )}
-              </Pressable>
-            </View>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.saveButton,
+                    savingClient && styles.buttonDisabled,
+                  ]}
+                  onPress={() => void saveClient()}
+                  disabled={savingClient}
+                >
+                  {savingClient ? (
+                    <ActivityIndicator
+                      size="small"
+                      color="#FFFFFF"
+                    />
+                  ) : (
+                    <Text style={styles.saveButtonText}>
+                      Сохранить
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -468,117 +430,76 @@ function formatOrderDate(
   orderDate: string | null,
   createdAt: string
 ) {
-  const date = new Date(
-    orderDate || createdAt
-  );
+  const date = new Date(orderDate || createdAt);
 
-  return date.toLocaleDateString(
-    'ru-RU',
-    {
-      day: 'numeric',
-      month: 'long',
-    }
-  );
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  });
 }
 
-function getStatusLabel(
-  status: string
-) {
+function getStatusLabel(status: string) {
   switch (status) {
     case 'DRAFT':
       return 'Черновик';
-
     case 'ACCEPTED':
       return 'Принят';
-
     case 'IN_PROGRESS':
       return 'В работе';
-
     case 'AWAITING_PICKUP':
       return 'Ожидает клиента';
-
     case 'COMPLETED':
       return 'Завершён';
-
     case 'CANCELLED':
       return 'Отменён';
-
     default:
       return status;
   }
 }
 
-function getStatusStyle(
-  status: string
-) {
+function getStatusStyle(status: string) {
   switch (status) {
     case 'DRAFT':
-      return {
-        backgroundColor: '#EAEAEA',
-      };
+      return { backgroundColor: '#EAEAEA' };
 
     case 'ACCEPTED':
     case 'IN_PROGRESS':
-      return {
-        backgroundColor: '#E8F1FA',
-      };
+      return { backgroundColor: '#E8F1FA' };
 
     case 'AWAITING_PICKUP':
-      return {
-        backgroundColor: '#F4EFE2',
-      };
+      return { backgroundColor: '#F4EFE2' };
 
     case 'COMPLETED':
-      return {
-        backgroundColor: '#E8F3EC',
-      };
+      return { backgroundColor: '#E8F3EC' };
 
     case 'CANCELLED':
-      return {
-        backgroundColor: '#F3E8E8',
-      };
+      return { backgroundColor: '#F3E8E8' };
 
     default:
-      return {
-        backgroundColor: '#EAEAEA',
-      };
+      return { backgroundColor: '#EAEAEA' };
   }
 }
 
-function getStatusTextStyle(
-  status: string
-) {
+function getStatusTextStyle(status: string) {
   switch (status) {
     case 'DRAFT':
-      return {
-        color: '#555555',
-      };
+      return { color: '#555555' };
 
     case 'ACCEPTED':
     case 'IN_PROGRESS':
-      return {
-        color: '#286090',
-      };
+      return { color: '#286090' };
 
     case 'AWAITING_PICKUP':
-      return {
-        color: '#806A2F',
-      };
+      return { color: '#806A2F' };
 
     case 'COMPLETED':
-      return {
-        color: '#287044',
-      };
+      return { color: '#287044' };
 
     case 'CANCELLED':
-      return {
-        color: '#A33A3A',
-      };
+      return { color: '#A33A3A' };
 
     default:
-      return {
-        color: '#555555',
-      };
+      return { color: '#555555' };
   }
 }
 
@@ -808,33 +729,35 @@ const styles = StyleSheet.create({
     color: '#777777',
   },
 
-  modalRoot: {
+  // BOTTOM SHEET
+
+  bottomSheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-  },
-
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
 
-  bottomWhiteSpace: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    left: 0,
-    height: 50,
-    backgroundColor: '#FFFFFF',
+  bottomSheetBackdrop: {
+    flex: 1,
   },
 
   bottomSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginBottom: 30,
+    maxHeight: '90%',
     paddingHorizontal: 24,
     paddingTop: 10,
-    paddingBottom: 30,
+    paddingBottom: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
+  },
+
+  sheetScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+
+  sheetContent: {
+    paddingBottom: 4,
   },
 
   sheetHandle: {

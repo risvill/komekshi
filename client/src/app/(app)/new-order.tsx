@@ -7,6 +7,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -16,9 +17,12 @@ import {
 } from '@/services/orderSelection';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,20 +34,15 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useAuth } from '@/context/AuthContext';
-
 import { getClients } from '@/services/clientsService';
 import { Client } from '@/types/client';
-
 import { getProducts } from '@/services/productsService';
 import { Product } from '@/types/product';
-
 import { createOrder } from '@/services/ordersService';
-
 import { OrderItem } from '@/types/orderItem';
 
 function formatPhoneNumber(phone: string) {
   const digits = phone.replace(/\D/g, '');
-
   let normalized = digits;
 
   if (normalized.startsWith('8')) {
@@ -63,6 +62,103 @@ function formatPhoneNumber(phone: string) {
 
 export default function NewOrder() {
   const { token } = useAuth();
+
+  const scrollRef = useRef<ScrollView>(null);
+  const discountInputRef = useRef<TextInput>(null);
+  const currentScrollY = useRef(0);
+  const previousScrollY = useRef(0);
+  const discountFocused = useRef(false);
+  const keyboardTopY = useRef<number | null>(null);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // КЛАВИАТУРА
+
+  const alignDiscountAboveKeyboard = () => {
+    if (!discountFocused.current || keyboardTopY.current === null) return;
+
+    discountInputRef.current?.measureInWindow((_x, y, _width, height) => {
+      if (!discountFocused.current || keyboardTopY.current === null) return;
+
+      const desiredBottom = keyboardTopY.current - 100;
+      const actualBottom = y + height;
+      const distance = actualBottom - desiredBottom;
+
+      if (Math.abs(distance) > 2) {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, currentScrollY.current + distance),
+          animated: true,
+        });
+      }
+    });
+  };
+
+  const scheduleDiscountAlignment = (delay = 250) => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(alignDiscountAboveKeyboard, delay);
+  };
+
+  const handleDiscountFocus = () => {
+    if (!discountFocused.current) {
+      previousScrollY.current = currentScrollY.current;
+    }
+
+    discountFocused.current = true;
+
+    if (keyboardTopY.current !== null) {
+      scheduleDiscountAlignment(80);
+    }
+  };
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => {
+        keyboardTopY.current = event.endCoordinates.screenY;
+        setKeyboardHeight(event.endCoordinates.height);
+
+        if (discountFocused.current) {
+          scheduleDiscountAlignment(300);
+        }
+      }
+    );
+
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        keyboardTopY.current = null;
+
+        if (scrollTimer.current) {
+          clearTimeout(scrollTimer.current);
+        }
+
+        const shouldRestore = discountFocused.current;
+        discountFocused.current = false;
+        setKeyboardHeight(0);
+
+        if (shouldRestore) {
+          scrollTimer.current = setTimeout(() => {
+            scrollRef.current?.scrollTo({
+              y: previousScrollY.current,
+              animated: true,
+            });
+          }, 100);
+        }
+      }
+    );
+
+    return () => {
+      show.remove();
+      hide.remove();
+
+      if (scrollTimer.current) {
+        clearTimeout(scrollTimer.current);
+      }
+    };
+  }, []);
+
+  // СОСТОЯНИЯ
 
   const { clientId } = useLocalSearchParams<{
     clientId?: string;
@@ -86,14 +182,60 @@ export default function NewOrder() {
     'PERCENT' | 'FIXED' | null
   >(null);
 
-  const [discountValue, setDiscountValue] =
-    useState('');
+  const [discountValue, setDiscountValue] = useState('');
 
-  const [showDatePicker, setShowDatePicker] =
-    useState(false);
+  // ВЫБОР ДАТЫ И ВРЕМЕНИ
 
-  const [showTimePicker, setShowTimePicker] =
-    useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const [draftDate, setDraftDate] = useState(new Date());
+  const [draftTime, setDraftTime] = useState(new Date());
+
+  const openDatePicker = () => {
+    setShowTimePicker(false);
+
+    setDraftDate(
+      orderDate
+        ? new Date(`${orderDate}T12:00:00`)
+        : new Date()
+    );
+
+    setShowDatePicker(true);
+  };
+
+  const openTimePicker = () => {
+    setShowDatePicker(false);
+
+    const next = new Date();
+
+    if (orderTime) {
+      const [hours, minutes] = orderTime.split(':').map(Number);
+      next.setHours(hours, minutes, 0, 0);
+    }
+
+    setDraftTime(next);
+    setShowTimePicker(true);
+  };
+
+  const saveDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    setOrderDate(`${year}-${month}-${day}`);
+    setShowDatePicker(false);
+  };
+
+  const saveTime = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    setOrderTime(`${hours}:${minutes}`);
+    setShowTimePicker(false);
+  };
+
+  // ЗАГРУЗКА ДАННЫХ
 
   const loadData = async () => {
     if (!token) {
@@ -123,42 +265,31 @@ export default function NewOrder() {
     useCallback(() => {
       loadData();
 
-      const selectedClient =
-        consumeSelectedClient();
+      const selectedClient = consumeSelectedClient();
 
       if (selectedClient !== undefined) {
         setSelectedClientId(selectedClient);
       }
 
-      const selectedProducts =
-        consumeSelectedProducts();
+      const selectedProducts = consumeSelectedProducts();
 
       if (selectedProducts.length > 0) {
         setItems((currentItems) => {
           const existingIds = new Set(
-            currentItems.map(
-              (item) => item.product_id
-            )
+            currentItems.map((item) => item.product_id)
           );
 
-          const newItems =
-            selectedProducts
-              .filter(
-                (product) =>
-                  !existingIds.has(product.id)
-              )
-              .map((product) => ({
-                product_id: product.id,
-                name: product.name,
-                quantity: 1,
-                price: Number(product.price),
-                unit: product.unit,
-              }));
+          const newItems = selectedProducts
+            .filter((product) => !existingIds.has(product.id))
+            .map((product) => ({
+              product_id: product.id,
+              name: product.name,
+              quantity: 1,
+              price: Number(product.price),
+              unit: product.unit,
+            }));
 
-          return [
-            ...currentItems,
-            ...newItems,
-          ];
+          return [...currentItems, ...newItems];
         });
       }
     }, [token])
@@ -179,9 +310,10 @@ export default function NewOrder() {
   }, [clientId, clients]);
 
   const selectedClient = clients.find(
-    (client) =>
-      client.id === selectedClientId
+    (client) => client.id === selectedClientId
   );
+
+  // ТОВАРЫ
 
   const changeItemQuantity = (
     productId: string,
@@ -190,36 +322,29 @@ export default function NewOrder() {
     setItems((current) =>
       current
         .map((item) => {
-          if (
-            item.product_id !== productId
-          ) {
+          if (item.product_id !== productId) {
             return item;
           }
 
-          const newQuantity =
-            item.quantity + change;
+          const newQuantity = item.quantity + change;
 
           return {
             ...item,
             quantity: newQuantity,
           };
         })
-        .filter(
-          (item) => item.quantity > 0
-        )
+        .filter((item) => item.quantity > 0)
     );
   };
 
   const orderTotal = items.reduce(
-    (sum, item) =>
-      sum + item.price * item.quantity,
+    (sum, item) => sum + item.price * item.quantity,
     0
   );
 
   const discountAmount =
     discountType === 'PERCENT'
-      ? orderTotal *
-        (Number(discountValue) / 100)
+      ? orderTotal * (Number(discountValue) / 100)
       : discountType === 'FIXED'
         ? Number(discountValue)
         : 0;
@@ -228,6 +353,8 @@ export default function NewOrder() {
     0,
     orderTotal - discountAmount
   );
+
+  // СОЗДАНИЕ ЗАКАЗА
 
   const handleCreateOrder = async () => {
     if (!token) {
@@ -245,40 +372,28 @@ export default function NewOrder() {
     try {
       setCreating(true);
 
-      const newOrder = await createOrder(
-        token,
-        {
-          client_id: selectedClientId,
+      const newOrder = await createOrder(token, {
+        client_id: selectedClientId,
 
-          order_date:
-            orderDate || undefined,
+        order_date: orderDate || undefined,
+        order_time: orderTime || undefined,
 
-          order_time:
-            orderTime || undefined,
+        discount_type: discountType || undefined,
 
-          discount_type:
-            discountType || undefined,
+        discount_value: discountType
+          ? Number(discountValue) || 0
+          : undefined,
 
-          discount_value:
-            discountType
-              ? Number(discountValue) || 0
-              : undefined,
+        items: items.map((item) => ({
+          product_id: item.product_id ?? undefined,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          unit: item.unit,
+        })),
+      });
 
-          items: items.map((item) => ({
-            product_id:
-              item.product_id ?? undefined,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            unit: item.unit,
-          })),
-        }
-      );
-
-      console.log(
-        'created order:',
-        newOrder
-      );
+      console.log('created order:', newOrder);
 
       Alert.alert(
         'Готово',
@@ -288,8 +403,7 @@ export default function NewOrder() {
             text: 'Открыть заказ',
             onPress: () =>
               router.replace({
-                pathname:
-                  '/order-details',
+                pathname: '/order-details',
                 params: {
                   id: newOrder.id,
                 },
@@ -319,198 +433,170 @@ export default function NewOrder() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={
-        styles.contentContainer
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Pressable
-          onPress={() =>
-            router.back()
-          }
-          hitSlop={8}
-          style={styles.backButtonContainer}
-        >
-          <Text style={styles.backButton}>
-            ←
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={[
+          styles.contentContainer,
+          {
+            paddingBottom:
+              keyboardHeight > 0
+                ? keyboardHeight + 180
+                : 30,
+          },
+        ]}
+        onScroll={(event) => {
+          currentScrollY.current =
+            event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={false}
+      >
+        {/* HEADER */}
+
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={styles.backButtonContainer}
+          >
+            <Text style={styles.backButton}>←</Text>
+          </Pressable>
+
+          <Text style={styles.title}>
+            Новый заказ
           </Text>
-        </Pressable>
 
-        <Text style={styles.title}>
-          Новый заказ
-        </Text>
+          <View style={styles.headerSpacer} />
+        </View>
 
-        <View style={styles.headerSpacer} />
-      </View>
+        <View style={styles.form}>
+          {/* КЛИЕНТ */}
 
-      <View style={styles.form}>
+          <Text style={styles.sectionLabel}>
+            КЛИЕНТ
+          </Text>
 
-        {/* КЛИЕНТ */}
+          <Pressable
+            style={styles.selector}
+            onPress={() =>
+              router.push({
+                pathname: '/select-client',
+                params: {
+                  selectedClientId: selectedClientId || '',
+                },
+              })
+            }
+          >
+            <View style={styles.selectorContent}>
+              <Text
+                style={[
+                  styles.selectorText,
+                  !selectedClient && styles.placeholderText,
+                ]}
+              >
+                {selectedClient
+                  ? selectedClient.name
+                  : 'Выберите клиента'}
+              </Text>
 
-        <Text style={styles.sectionLabel}>
-  КЛИЕНТ
-</Text>
+              {selectedClient?.phone && (
+                <Text style={styles.selectorSubtext}>
+                  {formatPhoneNumber(selectedClient.phone)}
+                </Text>
+              )}
+            </View>
 
-<Pressable
-  style={styles.selector}
-  onPress={() =>
-    router.push({
-      pathname: '/select-client',
-      params: {
-        selectedClientId:
-          selectedClientId || '',
-      },
-    })
-  }
->
-  <View style={styles.selectorContent}>
-    <Text
-      style={[
-        styles.selectorText,
-        !selectedClient &&
-          styles.placeholderText,
-      ]}
-    >
-      {selectedClient
-        ? selectedClient.name
-        : 'Выберите клиента'}
-    </Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
 
-    {selectedClient?.phone && (
-      <Text style={styles.selectorSubtext}>
-        {formatPhoneNumber(selectedClient.phone)}
-      </Text>
-    )}
-  </View>
+          {/* ТОВАРЫ */}
 
-  <Text style={styles.chevron}>
-    ›
-  </Text>
-</Pressable>
+          <Text
+            style={[
+              styles.sectionLabel,
+              styles.productsSectionLabel,
+            ]}
+          >
+            ТОВАРЫ
+          </Text>
 
-        {/* ТОВАРЫ */}
-
-        <Text
-          style={[
-            styles.sectionLabel,
-            styles.productsSectionLabel,
-          ]}
-        >
-          ТОВАРЫ
-        </Text>
-
-        <Pressable
-          style={styles.addProductsButton}
-          onPress={() =>
-            router.push({
-              pathname: '/select-product',
-              params: {
-                selectedProductIds:
-                  items
-                    .map(
-                      (item) =>
-                        item.product_id
-                    )
+          <Pressable
+            style={styles.addProductsButton}
+            onPress={() =>
+              router.push({
+                pathname: '/select-product',
+                params: {
+                  selectedProductIds: items
+                    .map((item) => item.product_id)
                     .join(','),
-              },
-            })
-          }
-        >
-          <View
-            style={styles.addProductsIcon}
+                },
+              })
+            }
           >
-            <Text
-              style={styles.addProductsIconText}
-            >
-              +
-            </Text>
-          </View>
+            <View style={styles.addProductsIcon}>
+              <Text style={styles.addProductsIconText}>
+                +
+              </Text>
+            </View>
 
-          <View
-            style={styles.addProductsContent}
-          >
-            <Text
-              style={styles.addProductsTitle}
-            >
-              Добавить товары
-            </Text>
+            <View style={styles.addProductsContent}>
+              <Text style={styles.addProductsTitle}>
+                Добавить товары
+              </Text>
 
-            <Text
-              style={styles.addProductsSubtitle}
-            >
-              {items.length > 0
-                ? `${items.length} ${
-                    items.length === 1
-                      ? 'товар'
-                      : items.length < 5
-                        ? 'товара'
-                        : 'товаров'
-                  } в заказе`
-                : 'Выберите товары для заказа'}
-            </Text>
-          </View>
+              <Text style={styles.addProductsSubtitle}>
+                {items.length > 0
+                  ? `${items.length} ${
+                      items.length === 1
+                        ? 'товар'
+                        : items.length < 5
+                          ? 'товара'
+                          : 'товаров'
+                    } в заказе`
+                  : 'Выберите товары для заказа'}
+              </Text>
+            </View>
 
-          <Text style={styles.chevron}>
-            ›
-          </Text>
-        </Pressable>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
 
-        {/* В ЗАКАЗЕ */}
+          {/* В ЗАКАЗЕ */}
 
-        {items.length > 0 && (
-          <View style={styles.selectedSection}>
-            <Text style={styles.sectionLabel}>
-              В ЗАКАЗЕ
-            </Text>
+          {items.length > 0 && (
+            <View style={styles.selectedSection}>
+              <Text style={styles.sectionLabel}>
+                В ЗАКАЗЕ
+              </Text>
 
-            <View
-              style={styles.selectedItemsCard}
-            >
-              {items.map(
-                (item, index) => (
+              <View style={styles.selectedItemsCard}>
+                {items.map((item, index) => (
                   <View
                     key={item.product_id}
                     style={[
                       styles.itemRow,
-                      index ===
-                        items.length - 1 &&
+                      index === items.length - 1 &&
                         styles.itemRowLast,
                     ]}
                   >
-                    <View
-                      style={styles.itemInfo}
-                    >
-                      <Text
-                        style={styles.itemName}
-                      >
+                    <View style={styles.itemInfo}>
+                      <Text style={styles.itemName}>
                         {item.name}
                       </Text>
 
-                      <Text
-                        style={
-                          styles.itemDetails
-                        }
-                      >
+                      <Text style={styles.itemDetails}>
                         {item.price} ₸ /{' '}
-                        {item.unit ===
-                        'piece'
+                        {item.unit === 'piece'
                           ? 'шт.'
                           : 'порция'}
                       </Text>
                     </View>
 
-                    <View
-                      style={
-                        styles.quantityControls
-                      }
-                    >
+                    <View style={styles.quantityControls}>
                       <Pressable
-                        style={
-                          styles.quantityButton
-                        }
+                        style={styles.quantityButton}
                         onPress={() =>
                           changeItemQuantity(
                             item.product_id!,
@@ -518,25 +604,17 @@ export default function NewOrder() {
                           )
                         }
                       >
-                        <Text
-                          style={
-                            styles.quantityButtonText
-                          }
-                        >
+                        <Text style={styles.quantityButtonText}>
                           −
                         </Text>
                       </Pressable>
 
-                      <Text
-                        style={styles.quantity}
-                      >
+                      <Text style={styles.quantity}>
                         {item.quantity}
                       </Text>
 
                       <Pressable
-                        style={
-                          styles.quantityButton
-                        }
+                        style={styles.quantityButton}
                         onPress={() =>
                           changeItemQuantity(
                             item.product_id!,
@@ -544,312 +622,318 @@ export default function NewOrder() {
                           )
                         }
                       >
-                        <Text
-                          style={
-                            styles.quantityButtonText
-                          }
-                        >
+                        <Text style={styles.quantityButtonText}>
                           +
                         </Text>
                       </Pressable>
                     </View>
                   </View>
-                )
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* ДАТА И ВРЕМЯ */}
+
+          <View style={styles.dateTimeSection}>
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.sectionLabel}>
+                ДАТА
+              </Text>
+
+              <Pressable
+                style={styles.dateTimeButton}
+                onPress={openDatePicker}
+              >
+                <Text
+                  style={[
+                    styles.dateTimeText,
+                    !orderDate && styles.placeholderText,
+                  ]}
+                >
+                  {orderDate || 'Выберите дату'}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.sectionLabel}>
+                ВРЕМЯ
+              </Text>
+
+              <Pressable
+                style={styles.dateTimeButton}
+                onPress={openTimePicker}
+              >
+                <Text
+                  style={[
+                    styles.dateTimeText,
+                    !orderTime && styles.placeholderText,
+                  ]}
+                >
+                  {orderTime || 'Выберите время'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* КАРУСЕЛЬ ДАТЫ */}
+
+          {showDatePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={draftDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  if (event.type === 'dismissed') {
+                    setShowDatePicker(false);
+                    return;
+                  }
+
+                  if (!date) return;
+
+                  setDraftDate(date);
+
+                  if (Platform.OS !== 'ios') {
+                    saveDate(date);
+                  }
+                }}
+              />
+
+              {Platform.OS === 'ios' && (
+                <View style={styles.pickerActions}>
+                  <Pressable
+                    onPress={() => setShowDatePicker(false)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerCancel}>
+                      Отмена
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => saveDate(draftDate)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerDone}>
+                      Готово
+                    </Text>
+                  </Pressable>
+                </View>
               )}
             </View>
-          </View>
-        )}
+          )}
 
-        {/* ДАТА И ВРЕМЯ */}
+          {/* КАРУСЕЛЬ ВРЕМЕНИ */}
 
-        <View
-          style={styles.dateTimeSection}
-        >
-          <View style={styles.dateTimeColumn}>
-            <Text style={styles.sectionLabel}>
-              ДАТА
-            </Text>
+          {showTimePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={draftTime}
+                mode="time"
+                display="spinner"
+                is24Hour={true}
+                onChange={(event, date) => {
+                  if (event.type === 'dismissed') {
+                    setShowTimePicker(false);
+                    return;
+                  }
 
-            <Pressable
-              style={styles.dateTimeButton}
-              onPress={() =>
-                setShowDatePicker(true)
-              }
-            >
-              <Text
-                style={[
-                  styles.dateTimeText,
-                  !orderDate &&
-                    styles.placeholderText,
-                ]}
-              >
-                {orderDate ||
-                  'Выберите дату'}
-              </Text>
-            </Pressable>
-          </View>
+                  if (!date) return;
 
-          <View style={styles.dateTimeColumn}>
-            <Text style={styles.sectionLabel}>
-              ВРЕМЯ
-            </Text>
+                  setDraftTime(date);
 
-            <Pressable
-              style={styles.dateTimeButton}
-              onPress={() =>
-                setShowTimePicker(true)
-              }
-            >
-              <Text
-                style={[
-                  styles.dateTimeText,
-                  !orderTime &&
-                    styles.placeholderText,
-                ]}
-              >
-                {orderTime ||
-                  'Выберите время'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+                  if (Platform.OS !== 'ios') {
+                    saveTime(date);
+                  }
+                }}
+              />
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={
-              orderDate
-                ? new Date(
-                    `${orderDate}T00:00:00`
-                  )
-                : new Date()
-            }
-            mode="date"
-            display="spinner"
-            onChange={(event, date) => {
-              setShowDatePicker(false);
+              {Platform.OS === 'ios' && (
+                <View style={styles.pickerActions}>
+                  <Pressable
+                    onPress={() => setShowTimePicker(false)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerCancel}>
+                      Отмена
+                    </Text>
+                  </Pressable>
 
-              if (!date) {
-                return;
-              }
-
-              const year =
-                date.getFullYear();
-
-              const month = String(
-                date.getMonth() + 1
-              ).padStart(2, '0');
-
-              const day = String(
-                date.getDate()
-              ).padStart(2, '0');
-
-              setOrderDate(
-                `${year}-${month}-${day}`
-              );
-            }}
-          />
-        )}
-
-        {showTimePicker && (
-          <DateTimePicker
-            value={new Date()}
-            mode="time"
-            display="spinner"
-            onChange={(event, date) => {
-              setShowTimePicker(false);
-
-              if (!date) {
-                return;
-              }
-
-              const hours = String(
-                date.getHours()
-              ).padStart(2, '0');
-
-              const minutes = String(
-                date.getMinutes()
-              ).padStart(2, '0');
-
-              setOrderTime(
-                `${hours}:${minutes}`
-              );
-            }}
-          />
-        )}
-
-        {/* СКИДКА */}
-
-        <Text
-          style={[
-            styles.sectionLabel,
-            styles.discountSectionLabel,
-          ]}
-        >
-          СКИДКА
-        </Text>
-
-        <View style={styles.discountTypes}>
-          <Pressable
-            style={[
-              styles.discountTypeButton,
-              discountType === null &&
-                styles.discountTypeButtonActive,
-            ]}
-            onPress={() => {
-              setDiscountType(null);
-              setDiscountValue('');
-            }}
-          >
-            <Text
-              style={[
-                styles.discountTypeText,
-                discountType === null &&
-                  styles.discountTypeTextActive,
-              ]}
-            >
-              Нет
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.discountTypeButton,
-              discountType === 'PERCENT' &&
-                styles.discountTypeButtonActive,
-            ]}
-            onPress={() =>
-              setDiscountType('PERCENT')
-            }
-          >
-            <Text
-              style={[
-                styles.discountTypeText,
-                discountType === 'PERCENT' &&
-                  styles.discountTypeTextActive,
-              ]}
-            >
-              %
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.discountTypeButton,
-              discountType === 'FIXED' &&
-                styles.discountTypeButtonActive,
-            ]}
-            onPress={() =>
-              setDiscountType('FIXED')
-            }
-          >
-            <Text
-              style={[
-                styles.discountTypeText,
-                discountType === 'FIXED' &&
-                  styles.discountTypeTextActive,
-              ]}
-            >
-              ₸
-            </Text>
-          </Pressable>
-        </View>
-
-        {discountType !== null && (
-          <View
-            style={styles.discountInputContainer}
-          >
-            <TextInput
-              style={styles.discountInput}
-              value={discountValue}
-              onChangeText={setDiscountValue}
-              keyboardType="numeric"
-              placeholder={
-                discountType === 'PERCENT'
-                  ? 'Например, 10'
-                  : 'Например, 2000'
-              }
-              placeholderTextColor="#999999"
-            />
-
-            <Text
-              style={styles.discountSuffix}
-            >
-              {discountType === 'PERCENT'
-                ? '%'
-                : '₸'}
-            </Text>
-          </View>
-        )}
-
-        {/* ИТОГО */}
-
-        <View style={styles.totalCard}>
-          {discountAmount > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
-                Сумма товаров
-              </Text>
-
-              <Text style={styles.totalValue}>
-                {orderTotal} ₸
-              </Text>
+                  <Pressable
+                    onPress={() => saveTime(draftTime)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerDone}>
+                      Готово
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           )}
 
-          {discountAmount > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
-                Скидка
-              </Text>
+          {/* СКИДКА */}
 
-              <Text
-                style={styles.discountValueText}
-              >
-                −{discountAmount} ₸
-              </Text>
-            </View>
-          )}
-
-          <View
+          <Text
             style={[
-              styles.totalRow,
-              discountAmount > 0 &&
-                styles.finalTotalRow,
+              styles.sectionLabel,
+              styles.discountSectionLabel,
             ]}
           >
-            <Text
-              style={styles.finalTotalLabel}
-            >
-              Итого
-            </Text>
-
-            <Text
-              style={styles.finalTotalValue}
-            >
-              {finalTotal} ₸
-            </Text>
-          </View>
-        </View>
-
-        {/* СОЗДАТЬ */}
-
-        <Pressable
-          style={[
-            styles.createButton,
-            creating &&
-              styles.createButtonDisabled,
-          ]}
-          onPress={handleCreateOrder}
-          disabled={creating}
-        >
-          <Text style={styles.createButtonText}>
-            {creating
-              ? 'Создаём...'
-              : 'Создать заказ'}
+            СКИДКА
           </Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+
+          <View style={styles.discountTypes}>
+            <Pressable
+              style={[
+                styles.discountTypeButton,
+                discountType === null &&
+                  styles.discountTypeButtonActive,
+              ]}
+              onPress={() => {
+                setDiscountType(null);
+                setDiscountValue('');
+              }}
+            >
+              <Text
+                style={[
+                  styles.discountTypeText,
+                  discountType === null &&
+                    styles.discountTypeTextActive,
+                ]}
+              >
+                Нет
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.discountTypeButton,
+                discountType === 'PERCENT' &&
+                  styles.discountTypeButtonActive,
+              ]}
+              onPress={() => setDiscountType('PERCENT')}
+            >
+              <Text
+                style={[
+                  styles.discountTypeText,
+                  discountType === 'PERCENT' &&
+                    styles.discountTypeTextActive,
+                ]}
+              >
+                %
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.discountTypeButton,
+                discountType === 'FIXED' &&
+                  styles.discountTypeButtonActive,
+              ]}
+              onPress={() => setDiscountType('FIXED')}
+            >
+              <Text
+                style={[
+                  styles.discountTypeText,
+                  discountType === 'FIXED' &&
+                    styles.discountTypeTextActive,
+                ]}
+              >
+                ₸
+              </Text>
+            </Pressable>
+          </View>
+
+          {discountType !== null && (
+            <View style={styles.discountInputContainer}>
+              <TextInput
+                ref={discountInputRef}
+                style={styles.discountInput}
+                value={discountValue}
+                onChangeText={setDiscountValue}
+                keyboardType="numeric"
+                onFocus={handleDiscountFocus}
+                placeholder={
+                  discountType === 'PERCENT'
+                    ? 'Например, 10'
+                    : 'Например, 2000'
+                }
+                placeholderTextColor="#999999"
+              />
+
+              <Text style={styles.discountSuffix}>
+                {discountType === 'PERCENT'
+                  ? '%'
+                  : '₸'}
+              </Text>
+            </View>
+          )}
+
+          {/* ИТОГО */}
+
+          <View style={styles.totalCard}>
+            {discountAmount > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  Сумма товаров
+                </Text>
+
+                <Text style={styles.totalValue}>
+                  {orderTotal} ₸
+                </Text>
+              </View>
+            )}
+
+            {discountAmount > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  Скидка
+                </Text>
+
+                <Text style={styles.discountValueText}>
+                  −{discountAmount} ₸
+                </Text>
+              </View>
+            )}
+
+            <View
+              style={[
+                styles.totalRow,
+                discountAmount > 0 &&
+                  styles.finalTotalRow,
+              ]}
+            >
+              <Text style={styles.finalTotalLabel}>
+                Итого
+              </Text>
+
+              <Text style={styles.finalTotalValue}>
+                {finalTotal} ₸
+              </Text>
+            </View>
+          </View>
+
+          {/* СОЗДАТЬ */}
+
+          <Pressable
+            style={[
+              styles.createButton,
+              creating && styles.createButtonDisabled,
+            ]}
+            onPress={handleCreateOrder}
+            disabled={creating}
+          >
+            <Text style={styles.createButtonText}>
+              {creating
+                ? 'Создаём...'
+                : 'Создать заказ'}
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -1089,6 +1173,30 @@ const styles = StyleSheet.create({
 
   dateTimeText: {
     fontSize: 15,
+    color: '#111111',
+  },
+
+  pickerContainer: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+
+  pickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  pickerCancel: {
+    fontSize: 16,
+    color: '#777777',
+  },
+
+  pickerDone: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#111111',
   },
 

@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  Platform,
   Modal,
   Pressable,
   ScrollView,
@@ -46,6 +48,22 @@ export default function Accounts() {
     useState<AccountType>('KASPI');
 
   const [saving, setSaving] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => setKeyboardHeight(event.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   // DELETE
   const [deletingAccount, setDeletingAccount] =
@@ -272,14 +290,18 @@ export default function Accounts() {
     setShowDeleteModal(true);
   };
 
-  const closeDeleteModal = () => {
-    if (processingDelete) return;
-
+  const resetDeleteModal = () => {
     setShowDeleteModal(false);
     setDeletingAccount(null);
     setShowCreateReplacement(false);
     setReplacementName('');
     setReplacementType('KASPI');
+  };
+
+  const closeDeleteModal = () => {
+    if (processingDelete) return;
+    Keyboard.dismiss();
+    resetDeleteModal();
   };
 
   const deleteToExistingAccount = async (
@@ -306,7 +328,7 @@ export default function Accounts() {
         )
       );
 
-      closeDeleteModal();
+      resetDeleteModal();
     } catch (error) {
       console.error(
         'Failed to delete account:',
@@ -365,7 +387,11 @@ export default function Accounts() {
           ),
         ]);
 
-        closeDeleteModal();
+        setShowDeleteModal(false);
+        setDeletingAccount(null);
+        setShowCreateReplacement(false);
+        setReplacementName('');
+        setReplacementType('KASPI');
       } catch (error) {
         console.error(
           'Failed to replace account:',
@@ -638,6 +664,13 @@ export default function Accounts() {
               </Pressable>
             </View>
 
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={[styles.sheetScrollContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 16 : 4 }]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
             <Text
               style={styles.inputLabel}
             >
@@ -652,7 +685,6 @@ export default function Accounts() {
               onChangeText={setName}
               editable={!saving}
               autoCapitalize="sentences"
-              autoFocus
             />
 
             <Text
@@ -745,6 +777,7 @@ export default function Accounts() {
                 Отмена
               </Text>
             </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -815,6 +848,13 @@ export default function Accounts() {
               </Pressable>
             </View>
 
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={[styles.sheetScrollContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 16 : 4 }]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
             <Text
               style={styles.inputLabel}
             >
@@ -829,7 +869,6 @@ export default function Accounts() {
               onChangeText={setEditingName}
               editable={!saving}
               autoCapitalize="sentences"
-              autoFocus
             />
 
             <Text
@@ -925,29 +964,28 @@ export default function Accounts() {
                 Отмена
               </Text>
             </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
       {/* ================================= */}
-      {/* DELETE ACCOUNT MODAL              */}
-      {/* ================================= */}
-
+      {/* DELETE: confirmation stays centered; replacement uses a bottom sheet */}
       <Modal
         visible={showDeleteModal}
         transparent
         animationType="fade"
-        onRequestClose={
-          closeDeleteModal
-        }
+        onRequestClose={closeDeleteModal}
       >
-        <View style={styles.modalOverlay}>
-          <View
-            style={styles.deleteModal}
-          >
-            {!showCreateReplacement ? (
-              <>
-                <Text
+        {!showCreateReplacement ? (
+          <View style={styles.modalOverlay}>
+            <ScrollView
+              style={styles.deleteModal}
+              contentContainerStyle={styles.deleteModalContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+<Text
                   style={styles.modalTitle}
                 >
                   Удалить счёт?
@@ -1063,10 +1101,35 @@ export default function Accounts() {
                     Отмена
                   </Text>
                 </Pressable>
-              </>
-            ) : (
-              <>
-                <Text
+            </ScrollView>
+          </View>
+        ) : (
+          <View style={styles.bottomSheetOverlay}>
+            <Pressable
+              style={styles.bottomSheetBackdrop}
+              onPress={() => {
+                if (!processingDelete) {
+                  Keyboard.dismiss();
+                  setShowCreateReplacement(false);
+                }
+              }}
+              disabled={processingDelete}
+            />
+            <View
+              style={[
+                styles.bottomSheet,
+                styles.replacementSheet,
+              ]}
+            >
+              <View style={styles.sheetHandle} />
+              <ScrollView
+                style={styles.sheetScroll}
+                contentContainerStyle={[styles.replacementContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 16 : 8 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+<Text
                   style={styles.modalTitle}
                 >
                   Новый счёт
@@ -1078,6 +1141,11 @@ export default function Accounts() {
                   Сначала создадим новый счёт,
                   затем перенесём на него
                   платежи и удалим старый.
+                </Text>
+                <Text
+                  style={styles.inputLabel}
+                >
+                  НАЗВАНИЕ СЧЁТА
                 </Text>
 
                 <TextInput
@@ -1092,6 +1160,14 @@ export default function Accounts() {
                     !processingDelete
                   }
                 />
+                <Text
+                  style={[
+                    styles.inputLabel,
+                    styles.typeLabel,
+                  ]}
+                >
+                  ТИП СЧЁТА
+                </Text>
 
                 <View
                   style={styles.typeRow}
@@ -1161,11 +1237,10 @@ export default function Accounts() {
 
                 <Pressable
                   style={styles.modalCancel}
-                  onPress={() =>
-                    setShowCreateReplacement(
-                      false
-                    )
-                  }
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setShowCreateReplacement(false);
+                  }}
                   disabled={
                     processingDelete
                   }
@@ -1178,10 +1253,10 @@ export default function Accounts() {
                     Назад
                   </Text>
                 </Pressable>
-              </>
-            )}
+              </ScrollView>
+            </View>
           </View>
-        </View>
+        )}
       </Modal>
     </SafeAreaView>
   );
@@ -1467,12 +1542,22 @@ const styles = StyleSheet.create({
   },
 
   bottomSheet: {
+    maxHeight: '90%',
     paddingHorizontal: 24,
     paddingTop: 10,
-    paddingBottom: 30,
+    paddingBottom: 10,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: '#FFFFFF',
+  },
+
+  sheetScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+
+  sheetScrollContent: {
+    paddingBottom: 4,
   },
 
   sheetHandle: {
@@ -1536,6 +1621,14 @@ const styles = StyleSheet.create({
 
   /* DELETE MODAL */
 
+  replacementSheet: {
+    maxHeight: '90%',
+  },
+
+  replacementContent: {
+    paddingBottom: 8,
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
@@ -1544,10 +1637,14 @@ const styles = StyleSheet.create({
   },
 
   deleteModal: {
+    flexGrow: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
     maxHeight: '85%',
+  },
+
+  deleteModalContent: {
+    padding: 20,
   },
 
   modalTitle: {

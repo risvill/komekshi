@@ -7,6 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,6 +52,54 @@ export default function NewTaskScreen() {
 
   const [showTimePicker, setShowTimePicker] =
     useState(false);
+
+  const [draftDate, setDraftDate] =
+    useState(new Date());
+
+  const [draftTime, setDraftTime] =
+    useState(new Date());
+
+  const openDatePicker = () => {
+    setShowTimePicker(false);
+    setDraftDate(new Date(deadline || new Date()));
+    setShowDatePicker(true);
+  };
+
+  const openTimePicker = () => {
+    setShowDatePicker(false);
+    setDraftTime(new Date(deadline || new Date()));
+    setShowTimePicker(true);
+  };
+
+  const saveDate = (selectedDate: Date) => {
+    const current = deadline || new Date();
+    const nextDate = new Date(selectedDate);
+
+    nextDate.setHours(
+      current.getHours(),
+      current.getMinutes(),
+      0,
+      0
+    );
+
+    setDeadline(nextDate);
+    setShowDatePicker(false);
+  };
+
+  const saveTime = (selectedTime: Date) => {
+    const current = deadline || new Date();
+    const nextDate = new Date(current);
+
+    nextDate.setHours(
+      selectedTime.getHours(),
+      selectedTime.getMinutes(),
+      0,
+      0
+    );
+
+    setDeadline(nextDate);
+    setShowTimePicker(false);
+  };
 
   const loadOrders = useCallback(async () => {
     if (!token) {
@@ -263,402 +312,370 @@ export default function NewTaskScreen() {
     }
   };
 
-  const handleDateChange = (
-    event: any,
-    selectedDate?: Date
-  ) => {
-    setShowDatePicker(false);
-
-    if (!selectedDate) {
-      return;
-    }
-
-    const current = deadline || new Date();
-
-    const nextDate = new Date(selectedDate);
-
-    nextDate.setHours(
-      current.getHours(),
-      current.getMinutes(),
-      0,
-      0
-    );
-
-    setDeadline(nextDate);
-  };
-
-  const handleTimeChange = (
-    event: any,
-    selectedTime?: Date
-  ) => {
-    setShowTimePicker(false);
-
-    if (!selectedTime) {
-      return;
-    }
-
-    const current = deadline || new Date();
-
-    const nextDate = new Date(current);
-
-    nextDate.setHours(
-      selectedTime.getHours(),
-      selectedTime.getMinutes(),
-      0,
-      0
-    );
-
-    setDeadline(nextDate);
-  };
-
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={
-        styles.contentContainer
-      }
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          style={styles.backButtonContainer}
-        >
-          <Text style={styles.backButton}>
-            ←
-          </Text>
-        </Pressable>
-
-        <Text style={styles.title}>
-          Новая задача
-        </Text>
-
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <View style={styles.form}>
-        <Text style={styles.sectionLabel}>
-          НАЗВАНИЕ ЗАДАЧИ
-        </Text>
-
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Например, подготовить заказ"
-            placeholderTextColor="#999999"
-          />
-        </View>
-
-        <View style={styles.dateTimeRow}>
-          <View style={styles.dateTimeColumn}>
-            <Text style={styles.dateTimeLabel}>
-              ДАТА
-            </Text>
-
-            <Pressable
-              style={styles.dateTimeButton}
-              onPress={() =>
-                setShowDatePicker(true)
-              }
-            >
-              <Text
-                style={[
-                  styles.dateTimeText,
-                  !deadline &&
-                    styles.placeholderText,
-                ]}
-              >
-                {deadline
-                  ? formatDate(deadline)
-                  : 'Выберите дату'}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.dateTimeColumn}>
-            <Text style={styles.dateTimeLabel}>
-              ВРЕМЯ
-            </Text>
-
-            <Pressable
-              style={styles.dateTimeButton}
-              onPress={() =>
-                setShowTimePicker(true)
-              }
-            >
-              <Text
-                style={[
-                  styles.dateTimeText,
-                  !deadline &&
-                    styles.placeholderText,
-                ]}
-              >
-                {deadline
-                  ? formatTime(deadline)
-                  : 'Выберите время'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {deadline && (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
           <Pressable
-            style={styles.clearDeadline}
-            onPress={() => setDeadline(null)}
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={styles.backButtonContainer}
           >
-            <Text style={styles.clearDeadlineText}>
-              Убрать срок
+            <Text style={styles.backButton}>
+              ←
             </Text>
           </Pressable>
-        )}
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={
-              deadline || new Date()
-            }
-            mode="date"
-            display="spinner"
-            onChange={handleDateChange}
-          />
-        )}
+          <Text style={styles.title}>
+            Новая задача
+          </Text>
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={
-              deadline || new Date()
-            }
-            mode="time"
-            display="spinner"
-            onChange={handleTimeChange}
-          />
-        )}
+          <View style={styles.headerSpacer} />
+        </View>
 
-        <Text
-          style={[
-            styles.sectionLabel,
-            styles.ordersSectionLabel,
-          ]}
-        >
-          ПРИВЯЗАТЬ К ЗАКАЗАМ
-        </Text>
+        <View style={styles.form}>
+          <Text style={styles.sectionLabel}>
+            НАЗВАНИЕ ЗАДАЧИ
+          </Text>
 
-        <View style={styles.ordersContainer}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator />
-            </View>
-          ) : activeOrders.length === 0 ? (
-            <View style={styles.emptyOrders}>
-              <Text
-                style={styles.emptyOrdersTitle}
-              >
-                Нет активных заказов
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Например, подготовить заказ"
+              placeholderTextColor="#999999"
+            />
+          </View>
+
+          {/* ДАТА И ВРЕМЯ */}
+
+          <View style={styles.dateTimeRow}>
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.dateTimeLabel}>
+                ДАТА
               </Text>
 
-              <Text
-                style={styles.emptyOrdersText}
+              <Pressable
+                style={styles.dateTimeButton}
+                onPress={openDatePicker}
               >
-                Здесь появятся заказы, которые
-                можно связать с задачей.
-              </Text>
-            </View>
-          ) : (
-            activeOrders.map((order) => {
-              const selected =
-                selectedOrderIds.includes(
-                  order.id
-                );
-
-              const statusColor =
-                getStatusColor(order.status);
-
-              const formattedDay =
-                formatOrderDay(
-                  order.order_date
-                );
-
-              const formattedMonth =
-                formatOrderMonth(
-                  order.order_date
-                );
-
-              const formattedTime =
-                formatOrderTime(
-                  order.order_time
-                );
-
-              return (
-                <Pressable
-                  key={order.id}
-                  onPress={() =>
-                    toggleOrder(order.id)
-                  }
+                <Text
                   style={[
-                    styles.orderCard,
-                    selected &&
-                      styles.orderCardSelected,
+                    styles.dateTimeText,
+                    !deadline && styles.placeholderText,
                   ]}
                 >
-                  <View style={styles.dateBlock}>
-                    <Text style={styles.orderDay}>
-                      {formattedDay || '—'}
-                    </Text>
+                  {deadline
+                    ? formatDate(deadline)
+                    : 'Выберите дату'}
+                </Text>
+              </Pressable>
+            </View>
 
-                    <Text
-                      style={styles.orderMonth}
-                    >
-                      {formattedMonth || '—'}
-                    </Text>
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.dateTimeLabel}>
+                ВРЕМЯ
+              </Text>
 
-                  </View>
+              <Pressable
+                style={styles.dateTimeButton}
+                onPress={openTimePicker}
+              >
+                <Text
+                  style={[
+                    styles.dateTimeText,
+                    !deadline && styles.placeholderText,
+                  ]}
+                >
+                  {deadline
+                    ? formatTime(deadline)
+                    : 'Выберите время'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
-                  <View
-                    style={styles.verticalDivider}
-                  />
+          {deadline && (
+            <Pressable
+              style={styles.clearDeadline}
+              onPress={() => {
+                setDeadline(null);
+                setShowDatePicker(false);
+                setShowTimePicker(false);
+              }}
+            >
+              <Text style={styles.clearDeadlineText}>
+                Убрать срок
+              </Text>
+            </Pressable>
+          )}
 
-                  <View
-                    style={styles.orderContent}
+          {/* КАРУСЕЛЬ ДАТЫ */}
+
+          {showDatePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={draftDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, selectedDate) => {
+                  if (event.type === 'dismissed') {
+                    setShowDatePicker(false);
+                    return;
+                  }
+
+                  if (!selectedDate) return;
+
+                  setDraftDate(selectedDate);
+
+                  if (Platform.OS !== 'ios') {
+                    saveDate(selectedDate);
+                  }
+                }}
+              />
+
+              {Platform.OS === 'ios' && (
+                <View style={styles.pickerActions}>
+                  <Pressable
+                    onPress={() => setShowDatePicker(false)}
+                    hitSlop={8}
                   >
-                    <View
-                      style={
-                        styles.orderTopRow
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.orderClient
-                        }
-                        numberOfLines={1}
-                      >
-                        {order.client_name ||
-                          'Без клиента'}
+                    <Text style={styles.pickerCancel}>
+                      Отмена
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => saveDate(draftDate)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerDone}>
+                      Готово
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* КАРУСЕЛЬ ВРЕМЕНИ */}
+
+          {showTimePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={draftTime}
+                mode="time"
+                display="spinner"
+                is24Hour={true}
+                onChange={(event, selectedTime) => {
+                  if (event.type === 'dismissed') {
+                    setShowTimePicker(false);
+                    return;
+                  }
+
+                  if (!selectedTime) return;
+
+                  setDraftTime(selectedTime);
+
+                  if (Platform.OS !== 'ios') {
+                    saveTime(selectedTime);
+                  }
+                }}
+              />
+
+              {Platform.OS === 'ios' && (
+                <View style={styles.pickerActions}>
+                  <Pressable
+                    onPress={() => setShowTimePicker(false)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerCancel}>
+                      Отмена
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => saveTime(draftTime)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.pickerDone}>
+                      Готово
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ПРИВЯЗКА К ЗАКАЗАМ */}
+
+          <Text
+            style={[
+              styles.sectionLabel,
+              styles.ordersSectionLabel,
+            ]}
+          >
+            ПРИВЯЗАТЬ К ЗАКАЗАМ
+          </Text>
+
+          <View style={styles.ordersContainer}>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator />
+              </View>
+            ) : activeOrders.length === 0 ? (
+              <View style={styles.emptyOrders}>
+                <Text style={styles.emptyOrdersTitle}>
+                  Нет активных заказов
+                </Text>
+
+                <Text style={styles.emptyOrdersText}>
+                  Здесь появятся заказы, которые
+                  можно связать с задачей.
+                </Text>
+              </View>
+            ) : (
+              activeOrders.map((order) => {
+                const selected =
+                  selectedOrderIds.includes(order.id);
+
+                const statusColor =
+                  getStatusColor(order.status);
+
+                const formattedDay =
+                  formatOrderDay(order.order_date);
+
+                const formattedMonth =
+                  formatOrderMonth(order.order_date);
+
+                const formattedTime =
+                  formatOrderTime(order.order_time);
+
+                return (
+                  <Pressable
+                    key={order.id}
+                    onPress={() => toggleOrder(order.id)}
+                    style={[
+                      styles.orderCard,
+                      selected && styles.orderCardSelected,
+                    ]}
+                  >
+                    <View style={styles.dateBlock}>
+                      <Text style={styles.orderDay}>
+                        {formattedDay || '—'}
                       </Text>
 
-                      <View
-                        style={[
-                          styles.selectionBox,
-                          selected &&
-                            styles.selectionBoxSelected,
-                        ]}
-                      >
-                        {selected && (
-                          <Text
-                            style={
-                              styles.selectionCheck
-                            }
-                          >
-                            ✓
+                      <Text style={styles.orderMonth}>
+                        {formattedMonth || '—'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.verticalDivider} />
+
+                    <View style={styles.orderContent}>
+                      <View style={styles.orderTopRow}>
+                        <Text
+                          style={styles.orderClient}
+                          numberOfLines={1}
+                        >
+                          {order.client_name || 'Без клиента'}
+                        </Text>
+
+                        <View
+                          style={[
+                            styles.selectionBox,
+                            selected &&
+                              styles.selectionBoxSelected,
+                          ]}
+                        >
+                          {selected && (
+                            <Text style={styles.selectionCheck}>
+                              ✓
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+
+                      <View style={styles.statusRow}>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            {
+                              backgroundColor: statusColor,
+                            },
+                          ]}
+                        />
+
+                        <Text
+                          style={[
+                            styles.statusText,
+                            {
+                              color: statusColor,
+                            },
+                          ]}
+                        >
+                          {formatStatus(order.status)}
+                        </Text>
+                      </View>
+
+                      <View style={styles.orderBottomRow}>
+                        {formattedTime ? (
+                          <Text style={styles.orderTimeBottom}>
+                            Заказ на {formattedTime}
+                          </Text>
+                        ) : (
+                          <View />
+                        )}
+
+                        {order.total != null && (
+                          <Text style={styles.orderAmount}>
+                            {formatAmount(order.total)}
                           </Text>
                         )}
                       </View>
                     </View>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
 
-                    <View
-                      style={
-                        styles.statusRow
-                      }
-                    >
-                      <View
-                        style={[
-                          styles.statusDot,
-                          {
-                            backgroundColor:
-                              statusColor,
-                          },
-                        ]}
-                      />
+          {/* СОЗДАТЬ ЗАДАЧУ */}
 
-                      <Text
-                        style={[
-                          styles.statusText,
-                          {
-                            color:
-                              statusColor,
-                          },
-                        ]}
-                      >
-                        {formatStatus(
-                          order.status
-                        )}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.orderBottomRow
-                      }
-                    >
-                      {formattedTime ? (
-                        <Text
-                          style={
-                            styles.orderTimeBottom
-                          }
-                        >
-                          Заказ на{' '}
-                          {formattedTime}
-                        </Text>
-                      ) : (
-                        <View />
-                      )}
-
-                      {order.total != null && (
-                        <Text
-                          style={
-                            styles.orderAmount
-                          }
-                        >
-                          {formatAmount(
-                            order.total
-                          )}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                </Pressable>
-              );
-            })
-          )}
-        </View>
-
-        <Pressable
-          style={[
-            styles.createButton,
-            saving &&
-              styles.createButtonDisabled,
-          ]}
-          onPress={handleCreateTask}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text
-              style={styles.createButtonText}
-            >
-              Создать задачу
-            </Text>
-          )}
-        </Pressable>
-
-        <Pressable
-          style={styles.cancelButton}
-          onPress={() => router.back()}
-          disabled={saving}
-        >
-          <Text
-            style={styles.cancelButtonText}
+          <Pressable
+            style={[
+              styles.createButton,
+              saving && styles.createButtonDisabled,
+            ]}
+            onPress={handleCreateTask}
+            disabled={saving}
           >
-            Отмена
-          </Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.createButtonText}>
+                Создать задачу
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={styles.cancelButton}
+            onPress={() => router.back()}
+            disabled={saving}
+          >
+            <Text style={styles.cancelButtonText}>
+              Отмена
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -780,6 +797,30 @@ const styles = StyleSheet.create({
     color: '#A33A3A',
   },
 
+  pickerContainer: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+
+  pickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  pickerCancel: {
+    fontSize: 16,
+    color: '#777777',
+  },
+
+  pickerDone: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111111',
+  },
+
   ordersSectionLabel: {
     marginTop: 28,
     marginBottom: 15,
@@ -817,21 +858,22 @@ const styles = StyleSheet.create({
   },
 
   orderCard: {
-  minHeight: 80,
-  marginBottom: 10,
-  paddingVertical: 16,
-  paddingHorizontal: 16,
-  borderRadius: 18,
-  backgroundColor: '#F7F7F7',
-  borderWidth: 1,
-  borderColor: '#F7F7F7',
-  flexDirection: 'row',
-},
+    minHeight: 80,
+    marginBottom: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: '#F7F7F7',
+    borderWidth: 1,
+    borderColor: '#F7F7F7',
+    flexDirection: 'row',
+  },
 
-orderCardSelected: {
-  backgroundColor: '#F1F1F1',
-  borderColor: '#E2E2E2',
-},
+  orderCardSelected: {
+    backgroundColor: '#F1F1F1',
+    borderColor: '#E2E2E2',
+  },
+
   dateBlock: {
     width: 58,
     alignItems: 'center',

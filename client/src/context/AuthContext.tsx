@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createContext,
   PropsWithChildren,
@@ -7,8 +7,7 @@ import {
   useEffect,
   useState,
 } from 'react';
-
-import { apiFetch } from '@/services/api';
+import { apiFetch, setUnauthorizedHandler } from '@/services/api';
 
 type User = {
   id: string;
@@ -36,9 +35,7 @@ const AuthContext = createContext<AuthContextType | undefined>(
   undefined
 );
 
-export function AuthProvider({
-  children,
-}: PropsWithChildren) {
+export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,21 +43,15 @@ export function AuthProvider({
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const savedToken =
-          await AsyncStorage.getItem('token');
-
-        const savedUser =
-          await AsyncStorage.getItem('user');
+        const savedToken = await AsyncStorage.getItem('token');
+        const savedUser = await AsyncStorage.getItem('user');
 
         if (savedToken && savedUser) {
           setToken(savedToken);
           setUser(JSON.parse(savedUser));
         }
       } catch (error) {
-        console.error(
-          'Failed to restore session:',
-          error
-        );
+        console.error('Failed to restore session:', error);
       } finally {
         setLoading(false);
       }
@@ -69,38 +60,36 @@ export function AuthProvider({
     restoreSession();
   }, []);
 
-  const login = async (
-    email: string,
-    password: string
-  ) => {
-    const response = await apiFetch('/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        email,
-        password,
-      }),
-    });
-
-    await AsyncStorage.setItem(
-      'token',
-      response.token
-    );
-
-    await AsyncStorage.setItem(
-      'user',
-      JSON.stringify(response.user)
-    );
-
-    setToken(response.token);
-    setUser(response.user);
-  };
-
   const logout = async () => {
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
-
     setToken(null);
     setUser(null);
+  };
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void logout().catch((error) => {
+        console.error('Failed to clear expired session:', error);
+      });
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const response = await apiFetch('/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    await AsyncStorage.setItem('token', response.token);
+    await AsyncStorage.setItem('user', JSON.stringify(response.user));
+
+    setToken(response.token);
+    setUser(response.user);
   };
 
   const updateUser = async (data: {
@@ -122,11 +111,7 @@ export function AuthProvider({
       token
     );
 
-    await AsyncStorage.setItem(
-      'user',
-      JSON.stringify(result)
-    );
-
+    await AsyncStorage.setItem('user', JSON.stringify(result));
     setUser(result);
   };
 
@@ -150,9 +135,7 @@ export function useAuth() {
   const context = useContext(AuthContext);
 
   if (!context) {
-    throw new Error(
-      'useAuth must be used inside AuthProvider'
-    );
+    throw new Error('useAuth must be used inside AuthProvider');
   }
 
   return context;
