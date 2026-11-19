@@ -520,6 +520,99 @@ app.post('/products', authMiddleware, async (req, res) => {
   }
 });
 
+
+app.patch('/products/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { name, price, unit, pieces_per_portion } = req.body;
+
+  const numericPrice = Number(price);
+  const numericPieces = Number(pieces_per_portion);
+
+  if (
+    typeof name !== 'string' ||
+    !name.trim() ||
+    price === null ||
+    price === undefined ||
+    !Number.isFinite(numericPrice) ||
+    numericPrice <= 0 ||
+    !['piece', 'portion'].includes(unit) ||
+    (unit === 'portion' &&
+      (!Number.isInteger(numericPieces) || numericPieces <= 0))
+  ) {
+    return res.status(400).json({
+      message: 'Проверьте название, цену и единицу измерения',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE products
+      SET
+        name = $1,
+        price = $2,
+        unit = $3,
+        pieces_per_portion = $4
+      WHERE id = $5
+        AND user_id = $6
+        AND is_active = true
+      RETURNING *
+      `,
+      [
+        name.trim(),
+        numericPrice,
+        unit,
+        unit === 'portion' ? numericPieces : null,
+        id,
+        req.user.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Товар не найден',
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update product:', error);
+    res.status(500).json({
+      message: 'Не удалось изменить товар',
+    });
+  }
+});
+
+app.delete('/products/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      UPDATE products
+      SET is_active = false
+      WHERE id = $1
+        AND user_id = $2
+        AND is_active = true
+      RETURNING id
+      `,
+      [req.params.id, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: 'Товар не найден',
+      });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Failed to delete product:', error);
+    res.status(500).json({
+      message: 'Не удалось удалить товар',
+    });
+  }
+});
+
+
 app.get('/accounts', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(

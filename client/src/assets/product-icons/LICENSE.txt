@@ -1,0 +1,8 @@
+Kitchen and cooking icons from Icon Pantry
+https://iconpantry.com
+
+Free for personal and commercial use. No attribution required.
+Full license: https://iconpantry.com/license
+
+44 icons, line, SVG.
+SVG line icons use currentColor, so they take the text color where you place them.

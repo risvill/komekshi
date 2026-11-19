@@ -1,7 +1,10 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  PanResponder,
+  Dimensions,
   Alert,
   Keyboard,
   Modal,
@@ -15,13 +18,136 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { productIcons, getProductIconIndex } from '../../assets/product-icons';
 
 import { useAuth } from '@/context/AuthContext';
 import {
   createProduct,
   getProducts,
+  updateProduct,
+  deleteProduct,
 } from '@/services/productsService';
 import { Product } from '@/types/product';
+
+type SwipeProductProps = {
+  product: Product;
+  onEdit: (product: Product) => void;
+  onDelete: (product: Product) => void;
+};
+
+const SWIPE_ACTION_WIDTH = 90;
+const SWIPE_TRIGGER = 115;
+
+function SwipeProduct({ product, onEdit, onDelete }: SwipeProductProps) {
+  const translation = useRef(new Animated.Value(0)).current;
+  const currentOffset = useRef(0);
+  const callbacks = useRef({ onEdit, onDelete, product });
+  callbacks.current = { onEdit, onDelete, product };
+  const [direction, setDirection] = useState<'edit' | 'delete' | null>(null);
+  const [revealed, setRevealed] = useState<'edit' | 'delete' | null>(null);
+  const directionRef = useRef<'edit' | 'delete' | null>(null);
+  const maxDrag = Math.min(Dimensions.get('window').width * 0.7, 230);
+
+  const animateTo = useCallback((value: number, next: 'edit' | 'delete' | null) => {
+    currentOffset.current = value;
+    setRevealed(next);
+    Animated.spring(translation, {
+      toValue: value,
+      useNativeDriver: true,
+      damping: 22,
+      stiffness: 210,
+      mass: 0.8,
+    }).start();
+  }, [translation]);
+
+  const trigger = useCallback((action: 'edit' | 'delete') => {
+    animateTo(0, null);
+    if (action === 'edit') callbacks.current.onEdit(callbacks.current.product);
+    else callbacks.current.onDelete(callbacks.current.product);
+  }, [animateTo]);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) =>
+      Math.abs(gesture.dx) > 9 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+    onPanResponderGrant: () => {
+      translation.stopAnimation();
+      directionRef.current = null;
+    },
+    onPanResponderMove: (_, gesture) => {
+      const next = Math.max(-maxDrag, Math.min(maxDrag, currentOffset.current + gesture.dx));
+      translation.setValue(next);
+      const nextDirection = next > 5 ? 'edit' : next < -5 ? 'delete' : null;
+      if (directionRef.current !== nextDirection) {
+        directionRef.current = nextDirection;
+        setDirection(nextDirection);
+      }
+    },
+    onPanResponderRelease: (_, gesture) => {
+      const displacement = currentOffset.current + gesture.dx;
+      if (displacement >= SWIPE_TRIGGER + 40) trigger('edit');
+      else if (displacement <= -(SWIPE_TRIGGER + 40)) trigger('delete');
+      else if (displacement > 42) animateTo(SWIPE_ACTION_WIDTH, 'edit');
+      else if (displacement < -42) animateTo(-SWIPE_ACTION_WIDTH, 'delete');
+      else animateTo(0, null);
+    },
+    onPanResponderTerminate: () => animateTo(0, null),
+  }), [animateTo, maxDrag, translation, trigger]);
+
+  const IconComponent = productIcons[getProductIconIndex(product.id)];
+  return (
+    <View style={styles.swipeContainer}>
+      <View style={styles.swipeBackground}>
+        {(direction === 'edit' || revealed === 'edit') && (
+          <LinearGradient
+            colors={['#A5C8FF', '#4287ED', '#1D62D0']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={[styles.swipeAction, styles.swipeLeftAction]}
+          >
+            <Pressable onPress={() => trigger('edit')} style={styles.swipeActionTouch}
+              accessibilityRole="button" accessibilityLabel={`Редактировать ${product.name}`}>
+              <Ionicons name="pencil-outline" size={25} color="#FFFFFF" />
+            </Pressable>
+          </LinearGradient>
+        )}
+        {(direction === 'delete' || revealed === 'delete') && (
+          <LinearGradient
+            colors={['#FFB2B2', '#F15C64', '#CF3547']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={[styles.swipeAction, styles.swipeRightAction]}
+          >
+            <Pressable onPress={() => trigger('delete')} style={styles.swipeActionTouch}
+              accessibilityRole="button" accessibilityLabel={`Удалить ${product.name}`}>
+              <Ionicons name="trash-outline" size={25} color="#FFFFFF" />
+            </Pressable>
+          </LinearGradient>
+        )}
+      </View>
+      <Animated.View
+  style={{
+    borderRadius: 16,
+    transform: [{ translateX: translation }],
+  }}
+  {...panResponder.panHandlers}
+>
+        <View style={styles.card}>
+          <View style={styles.productIconContainer}>
+            {IconComponent ? <IconComponent width={30} height={30} /> :
+              <Ionicons name="cafe-outline" size={26} color="#222222" />}
+          </View>
+          <View style={styles.cardInfo}>
+            <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
+            <Text style={styles.productUnit}>
+              {product.unit === 'portion' ? `Порция · ${product.pieces_per_portion} шт.` : 'Штука'}
+            </Text>
+          </View>
+          <Text style={styles.price}>{Number(product.price).toLocaleString('ru-RU')} ₸</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
 
 export default function Products() {
   const { token } = useAuth();
@@ -31,6 +157,9 @@ export default function Products() {
 
   // CREATE PRODUCT
   const [showCreate, setShowCreate] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -94,7 +223,18 @@ export default function Products() {
   // CREATE PRODUCT
   // -----------------------------
 
+  const openEditModal = (product: Product) => {
+    Keyboard.dismiss();
+    setName(product.name);
+    setPrice(String(product.price));
+    setUnit(product.unit);
+    setPiecesPerPortion(product.pieces_per_portion == null ? '' : String(product.pieces_per_portion));
+    setEditingProduct(product);
+    setShowCreate(true);
+  };
+
   const openCreateModal = () => {
+    setEditingProduct(null);
     setName('');
     setPrice('');
     setUnit('piece');
@@ -107,13 +247,14 @@ export default function Products() {
     Keyboard.dismiss();
 
     setShowCreate(false);
+    setEditingProduct(null);
     setName('');
     setPrice('');
     setUnit('piece');
     setPiecesPerPortion('');
   };
 
-  const handleCreateProduct = async () => {
+  const handleSaveProduct = async () => {
     if (!token) {
       return;
     }
@@ -153,33 +294,30 @@ export default function Products() {
     try {
       setCreating(true);
 
-      const product = await createProduct(
-        token,
-        {
-          name: name.trim(),
-          price: numericPrice,
-          unit,
-          pieces_per_portion:
-            unit === 'portion'
-              ? Number(piecesPerPortion)
-              : undefined,
-        }
-      );
-
-      setProducts((current) => [
-        product,
-        ...current,
-      ]);
+      const payload = {
+        name: name.trim(),
+        price: numericPrice,
+        unit,
+        pieces_per_portion: unit === 'portion' ? Number(piecesPerPortion) : undefined,
+      };
+      if (editingProduct) {
+        const updated = await updateProduct(token, editingProduct.id, payload);
+        setProducts((current) => current.map((p) => p.id === updated.id ? updated : p));
+      } else {
+        const created = await createProduct(token, payload);
+        setProducts((current) => [created, ...current]);
+      }
 
       Keyboard.dismiss();
       setShowCreate(false);
+      setEditingProduct(null);
       setName('');
       setPrice('');
       setUnit('piece');
       setPiecesPerPortion('');
     } catch (error) {
       console.error(
-        'Failed to create product:',
+        'Failed to save product:',
         error
       );
 
@@ -187,10 +325,24 @@ export default function Products() {
         'Ошибка',
         error instanceof Error
           ? error.message
-          : 'Не удалось создать товар'
+          : 'Не удалось сохранить товар'
       );
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!token || !deletingProduct || deleting) return;
+    try {
+      setDeleting(true);
+      await deleteProduct(token, deletingProduct.id);
+      setProducts((current) => current.filter((p) => p.id !== deletingProduct.id));
+      setDeletingProduct(null);
+    } catch (error) {
+      Alert.alert('Ошибка', error instanceof Error ? error.message : 'Не удалось удалить товар');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -277,46 +429,12 @@ export default function Products() {
 
                 <View style={styles.list}>
                   {products.map((product) => (
-                    <View
+                    <SwipeProduct
                       key={product.id}
-                      style={styles.card}
-                    >
-                      <View
-                        style={
-                          styles.cardInfo
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.productName
-                          }
-                        >
-                          {product.name}
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.productUnit
-                          }
-                        >
-                          {product.unit ===
-                          'portion'
-                            ? `Порция · ${product.pieces_per_portion} шт.`
-                            : 'Штука'}
-                        </Text>
-                      </View>
-
-                      <Text
-                        style={styles.price}
-                      >
-                        {Number(
-                          product.price
-                        ).toLocaleString(
-                          'ru-RU'
-                        )}{' '}
-                        ₸
-                      </Text>
-                    </View>
+                      product={product}
+                      onEdit={openEditModal}
+                      onDelete={setDeletingProduct}
+                    />
                   ))}
                 </View>
               </>
@@ -370,13 +488,13 @@ export default function Products() {
                 <Text
                   style={styles.sheetTitle}
                 >
-                  Новый товар
+                  {editingProduct ? 'Редактировать товар' : 'Новый товар'}
                 </Text>
 
                 <Text
                   style={styles.sheetSubtitle}
                 >
-                  Добавьте товар в каталог
+                  {editingProduct ? 'Измените данные товара' : 'Добавьте товар в каталог'}
                 </Text>
               </View>
 
@@ -536,7 +654,7 @@ export default function Products() {
                   styles.disabledButton,
               ]}
               onPress={() =>
-                void handleCreateProduct()
+                void handleSaveProduct()
               }
               disabled={creating}
             >
@@ -551,7 +669,7 @@ export default function Products() {
                     styles.saveButtonText
                   }
                 >
-                  Создать товар
+                  {editingProduct ? 'Сохранить изменения' : 'Создать товар'}
                 </Text>
               )}
             </Pressable>
@@ -572,6 +690,34 @@ export default function Products() {
               </Text>
             </Pressable>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!deletingProduct} transparent animationType="fade"
+        onRequestClose={() => { if (!deleting) setDeletingProduct(null); }}>
+        <View style={styles.deleteOverlay}>
+          <Pressable style={StyleSheet.absoluteFill}
+            onPress={() => { if (!deleting) setDeletingProduct(null); }} />
+          <View style={styles.deleteDialog}>
+            <View style={styles.deleteIconCircle}>
+              <Ionicons name="trash-outline" size={26} color="#D8444C" />
+            </View>
+            <Text style={styles.deleteTitle}>Удалить товар?</Text>
+            <Text style={styles.deleteDescription}>
+              {`«${deletingProduct?.name ?? ''}» исчезнет из каталога. История заказов сохранится.`}
+            </Text>
+            <View style={styles.deleteButtons}>
+              <Pressable disabled={deleting} style={styles.deleteCancelButton}
+                onPress={() => setDeletingProduct(null)}>
+                <Text style={styles.deleteCancelText}>Отмена</Text>
+              </Pressable>
+              <Pressable disabled={deleting} style={styles.deleteConfirmButton}
+                onPress={() => void handleDeleteProduct()}>
+                {deleting ? <ActivityIndicator color="#FFFFFF" /> :
+                  <Text style={styles.deleteConfirmText}>Удалить</Text>}
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -931,4 +1077,107 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+
+  swipeContainer: {
+  borderRadius: 16,
+  overflow: 'hidden',
+  backgroundColor: '#F7F7F7',
+},
+  swipeBackground: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  swipeAction: {
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  width: SWIPE_ACTION_WIDTH + 15,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+swipeLeftAction: {
+  left: -5,
+},
+
+swipeRightAction: {
+  right: -5,
+},
+  swipeActionTouch: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    marginRight: 12,
+    backgroundColor: '#EFEFEF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  deleteDialog: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 22,
+    padding: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+  },
+  deleteIconCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#FDEDEE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  deleteTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111111',
+    marginBottom: 8,
+  },
+  deleteDescription: {
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#777777',
+    marginBottom: 22,
+  },
+  deleteButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  deleteCancelButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: '#F1F1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: '#D8444C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteCancelText: { fontSize: 14, fontWeight: '600', color: '#333333' },
+  deleteConfirmText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
 });
