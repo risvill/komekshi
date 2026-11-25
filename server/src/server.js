@@ -402,6 +402,107 @@ app.post('/orders', authMiddleware, async (req, res) => {
     client.release();
   }
 });
+app.post('/orders/:id/repeat', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  let client;
+
+  try {
+    client = await pool.connect();
+
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `
+      INSERT INTO orders (
+        user_id,
+        client_id,
+        status,
+        subtotal,
+        discount_type,
+        discount_value,
+        total,
+        order_date,
+        order_time,
+        address,
+        wishes
+      )
+      SELECT
+        user_id,
+        client_id,
+        'DRAFT',
+        subtotal,
+        discount_type,
+        discount_value,
+        total,
+        NULL,
+        NULL,
+        address,
+        wishes
+      FROM orders
+      WHERE id = $1
+        AND user_id = $2
+      RETURNING *
+      `,
+      [id, req.user.id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        message: 'Заказ не найден',
+      });
+    }
+
+    const newOrder = orderResult.rows[0];
+
+    const itemsResult = await client.query(
+      `
+      INSERT INTO order_items (
+        order_id,
+        product_id,
+        name,
+        quantity,
+        price,
+        unit
+      )
+      SELECT
+        $1,
+        product_id,
+        name,
+        quantity,
+        price,
+        unit
+      FROM order_items
+      WHERE order_id = $2
+      RETURNING *
+      `,
+      [newOrder.id, id]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      ...newOrder,
+      items: itemsResult.rows,
+    });
+
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK');
+    }
+
+    console.error('Failed to repeat order:', error);
+
+    res.status(500).json({
+      message: 'Не удалось повторить заказ',
+    });
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+});
 app.patch('/orders/:id/status', authMiddleware, async (req, res) => {
 const { status } = req.body;
 const { id } = req.params;
@@ -444,6 +545,289 @@ res.status(500).json({
 message: 'Не удалось изменить статус заказа',
 });
 }
+});
+app.get('/analytics/sales', authMiddleware, async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const userId = req.user.id;
+
+  if (
+    typeof start_date !== 'string' ||
+    typeof end_date !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(start_date) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(end_date) ||
+    start_date > end_date
+  ) {
+    return res.status(400).json({
+      message: 'Укажите корректный период аналитики',
+    });
+  }
+
+  try {
+    const params = [userId, start_date, end_date];
+
+    // 1. Основные показатели продаж
+    const summaryResult = await pool.query(
+      `
+      SELECT
+        COUNT(*)::int AS orders_count,
+        COALESCE(SUM(total), 0)::float AS total_sales,
+        COALESCE(AVG(total), 0)::float AS average_check
+      FROM orders
+      WHERE user_id = $1
+        AND status = 'COMPLETED'
+        AND order_date BETWEEN $2::date AND $3::date
+      `,
+      params
+    );
+
+    // 2. Количество проданных товаров
+    const quantityResult = await pool.query(
+      `
+      SELECT
+        COALESCE(
+          SUM(oi.quantity) FILTER (WHERE oi.unit = 'piece'),
+          0
+        )::float AS pieces_sold,
+
+        COALESCE(
+          SUM(oi.quantity) FILTER (WHERE oi.unit = 'portion'),
+          0
+        )::float AS portions_sold
+
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+
+      WHERE o.user_id = $1
+        AND o.status = 'COMPLETED'
+        AND o.order_date BETWEEN $2::date AND $3::date
+      `,
+      params
+    );
+
+    // 3. Статистика по товарам
+    const productsResult = await pool.query(
+      `
+      SELECT
+        oi.product_id,
+        COALESCE(p.name, oi.name) AS name,
+        oi.unit,
+
+        SUM(oi.quantity)::float AS quantity_sold,
+
+        COUNT(DISTINCT o.id)::int AS orders_count,
+
+        SUM(oi.quantity * oi.price)::float AS gross_revenue,
+
+        SUM(
+          CASE
+            WHEN o.subtotal > 0
+            THEN oi.quantity * oi.price * o.total / o.subtotal
+            ELSE 0
+          END
+        )::float AS revenue
+
+      FROM order_items oi
+
+      JOIN orders o
+        ON o.id = oi.order_id
+
+      LEFT JOIN products p
+        ON p.id = oi.product_id
+        AND p.user_id = o.user_id
+
+      WHERE o.user_id = $1
+        AND o.status = 'COMPLETED'
+        AND o.order_date BETWEEN $2::date AND $3::date
+
+      GROUP BY
+        oi.product_id,
+        COALESCE(p.name, oi.name),
+        oi.unit
+
+      ORDER BY quantity_sold DESC
+      `,
+      params
+    );
+
+    // 4. Динамика продаж по дням
+    const dynamicsResult = await pool.query(
+      `
+      SELECT
+        TO_CHAR(d.day, 'YYYY-MM-DD') AS date,
+
+        COUNT(o.id)::int AS orders_count,
+
+        COALESCE(SUM(o.total), 0)::float AS total_sales
+
+      FROM generate_series(
+        $2::date,
+        $3::date,
+        INTERVAL '1 day'
+      ) AS d(day)
+
+      LEFT JOIN orders o
+        ON o.order_date = d.day::date
+        AND o.user_id = $1
+        AND o.status = 'COMPLETED'
+
+      GROUP BY d.day
+      ORDER BY d.day ASC
+      `,
+      params
+    );
+
+    // 5. Загруженность по дням недели
+    const weekdaysResult = await pool.query(
+      `
+      SELECT
+        EXTRACT(ISODOW FROM order_date)::int AS weekday,
+
+        COUNT(*)::int AS orders_count,
+
+        COALESCE(SUM(total), 0)::float AS total_sales
+
+      FROM orders
+
+      WHERE user_id = $1
+        AND status = 'COMPLETED'
+        AND order_date BETWEEN $2::date AND $3::date
+
+      GROUP BY weekday
+      ORDER BY weekday ASC
+      `,
+      params
+    );
+
+    const weekdays = Array.from(
+      { length: 7 },
+      (_, index) => {
+        const weekday = index + 1;
+
+        return (
+          weekdaysResult.rows.find(
+            (row) => row.weekday === weekday
+          ) || {
+            weekday,
+            orders_count: 0,
+            total_sales: 0,
+          }
+        );
+      }
+    );
+
+    // 6. Показатели предыдущего периода
+    const previousResult = await pool.query(
+      `
+      SELECT
+        COUNT(*)::int AS orders_count,
+        COALESCE(SUM(total), 0)::float AS total_sales,
+        COALESCE(AVG(total), 0)::float AS average_check
+
+      FROM orders
+
+      WHERE user_id = $1
+        AND status = 'COMPLETED'
+
+        AND order_date BETWEEN
+          ($2::date - ($3::date - $2::date + 1))
+          AND ($2::date - 1)
+      `,
+      params
+    );
+
+    // 7. Активные товары, которые не продавались
+    const unsoldProductsResult = await pool.query(
+      `
+      SELECT
+        p.id AS product_id,
+        p.name,
+        p.unit,
+        0 AS quantity_sold,
+        0 AS orders_count,
+        0 AS revenue
+
+      FROM products p
+
+      WHERE p.user_id = $1
+        AND p.is_active = true
+
+        AND NOT EXISTS (
+          SELECT 1
+          FROM order_items oi
+          JOIN orders o ON o.id = oi.order_id
+
+          WHERE oi.product_id = p.id
+            AND o.user_id = $1
+            AND o.status = 'COMPLETED'
+            AND o.order_date BETWEEN $2::date AND $3::date
+        )
+
+      ORDER BY p.name ASC
+      `,
+      params
+    );
+
+    const summary = summaryResult.rows[0];
+    const previous = previousResult.rows[0];
+
+    const calculateGrowth = (current, previousValue) => {
+      if (previousValue === 0) {
+        return current === 0 ? 0 : null;
+      }
+
+      return Number(
+        (
+          ((current - previousValue) / previousValue) * 100
+        ).toFixed(1)
+      );
+    };
+
+    res.json({
+      period: {
+        start_date,
+        end_date,
+      },
+
+      summary: {
+        ...summary,
+        ...quantityResult.rows[0],
+      },
+
+      previous_period: previous,
+
+      growth: {
+        total_sales: calculateGrowth(
+          summary.total_sales,
+          previous.total_sales
+        ),
+
+        orders_count: calculateGrowth(
+          summary.orders_count,
+          previous.orders_count
+        ),
+
+        average_check: calculateGrowth(
+          summary.average_check,
+          previous.average_check
+        ),
+      },
+
+      products: productsResult.rows,
+
+      unsold_products: unsoldProductsResult.rows,
+
+      dynamics: dynamicsResult.rows,
+
+      weekdays,
+    });
+
+  } catch (error) {
+    console.error('Failed to get sales analytics:', error);
+
+    res.status(500).json({
+      message: 'Не удалось загрузить аналитику продаж',
+    });
+  }
 });
 
 app.get('/products', authMiddleware, async (req, res) => {

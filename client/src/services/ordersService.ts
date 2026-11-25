@@ -63,3 +63,16 @@ export async function getTasksForOrder(
     token
   );
 }
+
+export async function repeatOrder(
+  token: string,
+  orderId: string
+): Promise<Order> {
+  return apiFetch(
+    '/orders/' + orderId + '/repeat',
+    {
+      method: 'POST',
+    },
+    token
+  );
+}

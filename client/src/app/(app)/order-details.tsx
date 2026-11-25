@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 
 import * as Clipboard from 'expo-clipboard';
 
@@ -24,6 +25,7 @@ import {
   getOrders,
   updateOrderStatus,
   getTasksForOrder,
+  repeatOrder,
 } from '@/services/ordersService';
 
 import { Order } from '@/types/order';
@@ -288,6 +290,8 @@ export default function OrderDetails() {
   const [updatingStatus, setUpdatingStatus] =
     useState(false);
 
+  const [repeatingOrder, setRepeatingOrder] = useState(false);
+
   const [payments, setPayments] =
     useState<Payment[]>([]);
 
@@ -436,6 +440,36 @@ export default function OrderDetails() {
         setUpdatingStatus(false);
       }
     };
+
+  const handleRepeatOrder = () => {
+    if (!token || !order || repeatingOrder) return;
+
+    Alert.alert(
+      'Повторить заказ?',
+      'Будет создан новый черновик без даты, времени, оплаты и связанных задач.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Повторить',
+          onPress: async () => {
+            try {
+              setRepeatingOrder(true);
+              const newOrder = await repeatOrder(token, order.id);
+              router.push({
+                pathname: '/order-details',
+                params: { id: newOrder.id },
+              });
+            } catch (error) {
+              console.error('Failed to repeat order:', error);
+              Alert.alert('Ошибка', 'Не удалось повторить заказ');
+            } finally {
+              setRepeatingOrder(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleCopyOffer =
     async () => {
@@ -745,22 +779,24 @@ export default function OrderDetails() {
         false
       }
     >
-      <Pressable
-        style={styles.backButton}
-        onPress={() =>
-          router.back(
-          
-          )
-        }
-      >
-        <Text
-          style={
-            styles.backButtonText
-          }
+      <View style={styles.navigationRow}>
+        <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Text style={styles.backButtonText}>←</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleRepeatOrder}
+          disabled={repeatingOrder}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Повторить заказ"
         >
-          ←
-        </Text>
-      </Pressable>
+          {repeatingOrder ? (
+            <ActivityIndicator size="small" color="#555555" />
+          ) : (
+            <Ionicons name="copy-outline" size={22} color="#555555" />
+          )}
+        </Pressable>
+      </View>
 
       {/* HEADER */}
 
@@ -2047,6 +2083,13 @@ export default function OrderDetails() {
 }
 
 const styles = StyleSheet.create({
+  navigationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
