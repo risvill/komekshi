@@ -25,6 +25,8 @@ export default function AppLayout() {
       <Stack.Screen name="new-product" />
       <Stack.Screen name="select-client" />
       <Stack.Screen name="select-product" />
+      <Stack.Screen name="sales-analytics" />
+      <Stack.Screen name="financial-analytics" />
     </Stack>
   );
 }

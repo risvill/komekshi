@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -482,6 +483,71 @@ export default function More() {
             </Text>
           </Pressable>
         </View>
+        <Text style={styles.sectionTitle}>АНАЛИТИКА</Text>
+
+<View style={styles.menuCard}>
+  <Pressable
+    style={styles.menuItem}
+    onPress={() => router.push('/sales-analytics')}
+  >
+    <View
+      style={[
+        styles.menuIcon,
+        { backgroundColor: '#FFFFFF' },
+      ]}
+    >
+      <Ionicons
+        name="stats-chart-outline"
+        size={18}
+        color="#B83A3A"
+      />
+    </View>
+
+    <View style={styles.menuTextContainer}>
+      <Text style={styles.menuTitle}>
+        Аналитика продаж
+      </Text>
+
+      <Text style={styles.menuSubtitle}>
+        Товары и статистика заказов
+      </Text>
+    </View>
+
+    <Text style={styles.arrow}>›</Text>
+  </Pressable>
+
+  <View style={styles.menuDivider} />
+
+  <Pressable
+    style={styles.menuItem}
+    onPress={() => router.push('/financial-analytics')}
+  >
+    <View
+      style={[
+        styles.menuIcon,
+        { backgroundColor: '#FFFFFF' },
+      ]}
+    >
+      <Ionicons
+        name="wallet-outline"
+        size={18}
+        color="#527DA8"
+      />
+    </View>
+
+    <View style={styles.menuTextContainer}>
+      <Text style={styles.menuTitle}>
+        Финансовая аналитика
+      </Text>
+
+      <Text style={styles.menuSubtitle}>
+        Доходы и денежные поступления
+      </Text>
+    </View>
+
+    <Text style={styles.arrow}>›</Text>
+  </Pressable>
+</View>
 
         <Pressable
           style={[
@@ -688,7 +754,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
 
   title: {

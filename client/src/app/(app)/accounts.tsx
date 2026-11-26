@@ -227,12 +227,16 @@ export default function Accounts() {
       );
 
       setAccounts((current) =>
-        current.map((account) =>
-          account.id === editingAccount.id
-            ? updated
-            : account
-        )
-      );
+      current.map((account) =>
+        account.id === editingAccount.id
+          ? {
+              ...account,
+              ...updated,
+              balance: updated.balance ?? account.balance,
+            }
+          : account
+      )
+    );
 
       setEditingAccount(null);
       setEditingName('');

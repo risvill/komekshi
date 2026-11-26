@@ -546,6 +546,446 @@ message: 'Не удалось изменить статус заказа',
 });
 }
 });
+app.get('/analytics/financial', authMiddleware, async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const userId = req.user.id;
+
+  if (
+    typeof start_date !== 'string' ||
+    typeof end_date !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(start_date) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(end_date) ||
+    start_date > end_date
+  ) {
+    return res.status(400).json({
+      message: 'Укажите корректный период аналитики',
+    });
+  }
+
+  try {
+    const params = [userId, start_date, end_date];
+
+    // 1. Основные финансовые показатели
+
+    const summaryResult = await pool.query(
+      `
+      SELECT
+        COALESCE(SUM(p.amount), 0)::float AS total_income,
+
+        COUNT(p.id)::int AS payments_count,
+
+        COUNT(DISTINCT p.order_id)::int AS paid_orders_count,
+
+        (
+          COALESCE(SUM(p.amount), 0) /
+          ($3::date - $2::date + 1)
+        )::float AS average_daily_income
+
+      FROM payments p
+
+      JOIN orders o
+        ON o.id = p.order_id
+
+      WHERE o.user_id = $1
+        AND p.payment_date::date
+          BETWEEN $2::date AND $3::date
+      `,
+      params
+    );
+
+    // 2. Доход за предыдущий период
+
+    const previousResult = await pool.query(
+      `
+      SELECT
+        COALESCE(SUM(p.amount), 0)::float AS total_income,
+
+        COUNT(p.id)::int AS payments_count,
+
+        (
+          COALESCE(SUM(p.amount), 0) /
+          ($3::date - $2::date + 1)
+        )::float AS average_daily_income
+
+      FROM payments p
+
+      JOIN orders o
+        ON o.id = p.order_id
+
+      WHERE o.user_id = $1
+
+        AND p.payment_date::date BETWEEN
+          ($2::date - ($3::date - $2::date + 1))
+          AND ($2::date - 1)
+      `,
+      params
+    );
+
+    // 3. Динамика поступлений по дням
+
+    const dynamicsResult = await pool.query(
+      `
+      WITH daily_income AS (
+        SELECT
+          p.payment_date::date AS payment_day,
+
+          SUM(p.amount)::float AS total_income,
+
+          COUNT(p.id)::int AS payments_count
+
+        FROM payments p
+
+        JOIN orders o
+          ON o.id = p.order_id
+
+        WHERE o.user_id = $1
+
+          AND p.payment_date::date
+            BETWEEN $2::date AND $3::date
+
+        GROUP BY p.payment_date::date
+      )
+
+      SELECT
+        TO_CHAR(d.day, 'YYYY-MM-DD') AS date,
+
+        COALESCE(i.total_income, 0) AS total_income,
+
+        COALESCE(i.payments_count, 0) AS payments_count
+
+      FROM generate_series(
+        $2::date,
+        $3::date,
+        INTERVAL '1 day'
+      ) AS d(day)
+
+      LEFT JOIN daily_income i
+        ON i.payment_day = d.day::date
+
+      ORDER BY d.day ASC
+      `,
+      params
+    );
+
+    // 4. Распределение поступлений по счетам
+
+    const accountsResult = await pool.query(
+      `
+      SELECT
+        a.id AS account_id,
+        a.name,
+        a.type,
+        a.is_active,
+
+        COALESCE(SUM(p.amount), 0)::float AS total_income,
+
+        COUNT(p.id)::int AS payments_count
+
+      FROM payments p
+
+      JOIN orders o
+        ON o.id = p.order_id
+
+      JOIN accounts a
+        ON a.id = p.account_id
+        AND a.user_id = o.user_id
+
+      WHERE o.user_id = $1
+
+        AND p.payment_date::date
+          BETWEEN $2::date AND $3::date
+
+      GROUP BY
+        a.id,
+        a.name,
+        a.type,
+        a.is_active
+
+      ORDER BY total_income DESC
+      `,
+      params
+    );
+
+    // 5. Ожидаемые поступления
+
+    const outstandingResult = await pool.query(
+      `
+      WITH order_balances AS (
+        SELECT
+          o.id,
+          o.status,
+          o.total,
+
+          GREATEST(
+            o.total - COALESCE(SUM(p.amount), 0),
+            0
+          ) AS remaining_amount
+
+        FROM orders o
+
+        LEFT JOIN payments p
+          ON p.order_id = o.id
+
+        WHERE o.user_id = $1
+
+          AND o.status IN (
+            'ACCEPTED',
+            'IN_PROGRESS',
+            'AWAITING_PICKUP',
+            'COMPLETED'
+          )
+
+        GROUP BY o.id, o.status, o.total
+      )
+
+      SELECT
+        COALESCE(
+          SUM(remaining_amount),
+          0
+        )::float AS total_outstanding,
+
+        COUNT(*) FILTER (
+          WHERE remaining_amount > 0
+        )::int AS unpaid_orders_count,
+
+        COALESCE(
+          SUM(remaining_amount) FILTER (
+            WHERE status = 'COMPLETED'
+          ),
+          0
+        )::float AS completed_orders_debt,
+
+        COALESCE(
+          SUM(remaining_amount) FILTER (
+            WHERE status != 'COMPLETED'
+          ),
+          0
+        )::float AS active_orders_outstanding
+
+      FROM order_balances
+      `,
+      [userId]
+    );
+
+    // 6. Самый доходный день выбранного периода
+
+    const bestDayResult = await pool.query(
+      `
+      SELECT
+        TO_CHAR(
+          p.payment_date::date,
+          'YYYY-MM-DD'
+        ) AS date,
+
+        SUM(p.amount)::float AS total_income
+
+      FROM payments p
+
+      JOIN orders o
+        ON o.id = p.order_id
+
+      WHERE o.user_id = $1
+
+        AND p.payment_date::date
+          BETWEEN $2::date AND $3::date
+
+      GROUP BY p.payment_date::date
+
+      ORDER BY total_income DESC, date ASC
+
+      LIMIT 1
+      `,
+      params
+    );
+
+    // 7. Самый доходный месяц выбранного периода
+
+    const bestMonthResult = await pool.query(
+      `
+      SELECT
+        TO_CHAR(
+          p.payment_date,
+          'YYYY-MM'
+        ) AS month,
+
+        SUM(p.amount)::float AS total_income
+
+      FROM payments p
+
+      JOIN orders o
+        ON o.id = p.order_id
+
+      WHERE o.user_id = $1
+
+        AND p.payment_date::date
+          BETWEEN $2::date AND $3::date
+
+      GROUP BY TO_CHAR(
+        p.payment_date,
+        'YYYY-MM'
+      )
+
+      ORDER BY total_income DESC, month ASC
+
+      LIMIT 1
+      `,
+      params
+    );
+
+    // 8. Прогноз дохода на текущий месяц
+
+    const forecastResult = await pool.query(
+      `
+      WITH local_date AS (
+        SELECT
+          (NOW() AT TIME ZONE 'Asia/Almaty')::date
+            AS today
+      ),
+
+      month_info AS (
+        SELECT
+          today,
+
+          DATE_TRUNC(
+            'month',
+            today
+          )::date AS month_start,
+
+          (
+            DATE_TRUNC('month', today)
+            + INTERVAL '1 month'
+            - INTERVAL '1 day'
+          )::date AS month_end
+
+        FROM local_date
+      ),
+
+      month_income AS (
+        SELECT
+          COALESCE(SUM(p.amount), 0) AS income
+
+        FROM payments p
+
+        JOIN orders o
+          ON o.id = p.order_id
+
+        CROSS JOIN month_info m
+
+        WHERE o.user_id = $1
+
+          AND p.payment_date::date
+            BETWEEN m.month_start AND m.today
+      )
+
+      SELECT
+        i.income::float AS current_month_income,
+
+        (m.today - m.month_start + 1)::int
+          AS elapsed_days,
+
+        (m.month_end - m.month_start + 1)::int
+          AS total_days,
+
+        (
+          i.income /
+          (m.today - m.month_start + 1)
+        )::float AS average_daily_income,
+
+        (
+          i.income /
+          (m.today - m.month_start + 1) *
+          (m.month_end - m.month_start + 1)
+        )::float AS predicted_income
+
+      FROM month_info m
+
+      CROSS JOIN month_income i
+      `,
+      [userId]
+    );
+
+    const summary = summaryResult.rows[0];
+    const previous = previousResult.rows[0];
+
+    const calculateGrowth = (current, previousValue) => {
+      if (previousValue === 0) {
+        return current === 0 ? 0 : null;
+      }
+
+      return Number(
+        (
+          ((current - previousValue) / previousValue) * 100
+        ).toFixed(1)
+      );
+    };
+
+    const accounts = accountsResult.rows.map((account) => ({
+      ...account,
+
+      percentage:
+        summary.total_income > 0
+          ? Number(
+              (
+                account.total_income /
+                summary.total_income *
+                100
+              ).toFixed(1)
+            )
+          : 0,
+    }));
+
+    res.json({
+      period: {
+        start_date,
+        end_date,
+      },
+
+      summary,
+
+      previous_period: previous,
+
+      growth: {
+        total_income: calculateGrowth(
+          summary.total_income,
+          previous.total_income
+        ),
+
+        payments_count: calculateGrowth(
+          summary.payments_count,
+          previous.payments_count
+        ),
+
+        average_daily_income: calculateGrowth(
+          summary.average_daily_income,
+          previous.average_daily_income
+        ),
+      },
+
+      dynamics: dynamicsResult.rows,
+
+      accounts,
+
+      outstanding: outstandingResult.rows[0],
+
+      best_day: bestDayResult.rows[0] || null,
+
+      best_month: bestMonthResult.rows[0] || null,
+
+      forecast: forecastResult.rows[0],
+    });
+
+  } catch (error) {
+    console.error(
+      'Failed to get financial analytics:',
+      error
+    );
+
+    res.status(500).json({
+      message: 'Не удалось загрузить финансовую аналитику',
+    });
+  }
+});
+
 app.get('/analytics/sales', authMiddleware, async (req, res) => {
   const { start_date, end_date } = req.query;
   const userId = req.user.id;
