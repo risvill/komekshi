@@ -100,15 +100,13 @@ export default function SelectClient() {
     });
   }, [clients, search]);
 
-  const handleSelectClient = (
-    clientId: string | undefined
-  ) => {
-    setSelectedId(clientId);
-
-    setSelectedClient(clientId);
-
-    router.replace('/new-order')
-  };
+const handleSelectClient = (
+  clientId: string | undefined
+) => {
+  setSelectedId(clientId);
+  setSelectedClient(clientId ?? null);
+  router.back();
+};
 
   if (loading) {
     return (
@@ -132,7 +130,7 @@ export default function SelectClient() {
 
         <View style={styles.header}>
           <Pressable
-            onPress={() => router.replace('/new-order')}
+            onPress={() => router.back()}
             hitSlop={8}
             style={styles.backButtonContainer}
           >

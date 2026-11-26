@@ -116,17 +116,15 @@ export default function SelectProduct() {
   };
 
   const handleAddProducts = () => {
-    const selectedProducts =
-      products.filter((product) =>
-        selectedIds.has(product.id)
-      );
-
-    setSelectedProducts(
-      selectedProducts
+  const selectedProducts =
+    products.filter((product) =>
+      selectedIds.has(product.id)
     );
 
-    router.replace('/new-order')
-  };
+  setSelectedProducts(selectedProducts);
+
+  router.back();
+};
 
   const selectedCount =
     selectedIds.size;
@@ -153,7 +151,7 @@ export default function SelectProduct() {
 
         <View style={styles.header}>
           <Pressable
-            onPress={() => router.replace('/new-order')}
+            onPress={() => router.back()}
             hitSlop={8}
             style={styles.backButtonContainer}
           >

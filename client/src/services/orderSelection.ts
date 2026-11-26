@@ -1,11 +1,11 @@
 import { Product } from '@/types/product';
 
-let selectedClientId: string | undefined;
+let selectedClientId: string | null | undefined;
 
-let selectedProducts: Product[] = [];
+let selectedProducts: Product[] | undefined;
 
 export function setSelectedClient(
-  clientId: string | undefined
+  clientId: string | null | undefined
 ) {
   selectedClientId = clientId;
 }
@@ -27,7 +27,7 @@ export function setSelectedProducts(
 export function consumeSelectedProducts() {
   const value = selectedProducts;
 
-  selectedProducts = [];
+  selectedProducts = undefined;
 
   return value;
 }

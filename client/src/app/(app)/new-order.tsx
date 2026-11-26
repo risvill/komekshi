@@ -171,7 +171,7 @@ export default function NewOrder() {
   const [products, setProducts] = useState<Product[]>([]);
 
   const [selectedClientId, setSelectedClientId] =
-    useState<string | undefined>();
+    useState<string | null | undefined>();
 
   const [items, setItems] = useState<OrderItem[]>([]);
 
@@ -273,7 +273,7 @@ export default function NewOrder() {
 
       const selectedProducts = consumeSelectedProducts();
 
-      if (selectedProducts.length > 0) {
+      if (selectedProducts !== undefined) {
         setItems((currentItems) => {
           const existingIds = new Set(
             currentItems.map((item) => item.product_id)
@@ -289,7 +289,11 @@ export default function NewOrder() {
               unit: product.unit,
             }));
 
-          return [...currentItems, ...newItems];
+          const selectedIds = new Set(selectedProducts.map((product) => product.id));
+          return [
+            ...currentItems.filter((item) => item.product_id != null && selectedIds.has(item.product_id)),
+            ...newItems,
+          ];
         });
       }
     }, [token])
@@ -305,7 +309,9 @@ export default function NewOrder() {
     );
 
     if (clientExists) {
-      setSelectedClientId(clientId);
+      setSelectedClientId((current) =>
+        current === undefined ? clientId : current
+      );
     }
   }, [clientId, clients]);
 
@@ -373,7 +379,7 @@ export default function NewOrder() {
       setCreating(true);
 
       const newOrder = await createOrder(token, {
-        client_id: selectedClientId,
+        client_id: selectedClientId ?? undefined,
 
         order_date: orderDate || undefined,
         order_time: orderTime || undefined,
@@ -494,12 +500,14 @@ export default function NewOrder() {
               <Text
                 style={[
                   styles.selectorText,
-                  !selectedClient && styles.placeholderText,
+                  !selectedClient && selectedClientId !== null && styles.placeholderText,
                 ]}
               >
                 {selectedClient
                   ? selectedClient.name
-                  : 'Выберите клиента'}
+                  : selectedClientId === null
+                     ? 'Без клиента'
+                     : 'Выберите клиента'}
               </Text>
 
               {selectedClient?.phone && (
