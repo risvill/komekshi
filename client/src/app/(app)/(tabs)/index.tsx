@@ -1132,11 +1132,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 32,
-    marginTop: 2,
+    marginTop: 10,
   },
 
   expandButtonText: {
-    fontSize: 24,
+    fontSize: 20,
     lineHeight: 28,
     color: '#208AEF',
   },

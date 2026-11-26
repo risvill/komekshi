@@ -144,7 +144,8 @@ app.get('/clients/:id', authMiddleware, async (req, res) => {
               'name', oi.name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'unit', oi.unit
+              'unit', oi.unit,
+              'pieces_per_portion', oi.pieces_per_portion
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -364,6 +365,36 @@ app.post('/orders', authMiddleware, async (req, res) => {
     const order = orderResult.rows[0];
 
     for (const item of items) {
+      let piecesPerPortion = 1;
+
+      if (item.unit === 'portion') {
+        const productResult = await client.query(
+          `
+          SELECT pieces_per_portion
+          FROM products
+          WHERE id = $1
+            AND user_id = $2
+            AND unit = 'portion'
+          `,
+          [item.product_id || null, req.user.id]
+        );
+
+        piecesPerPortion = Number(
+          productResult.rows[0]?.pieces_per_portion
+        );
+
+        if (
+          !Number.isInteger(piecesPerPortion) ||
+          piecesPerPortion <= 0
+        ) {
+          await client.query('ROLLBACK');
+
+          return res.status(400).json({
+            message: `Не удалось определить размер порции товара «${item.name}»`,
+          });
+        }
+      }
+
       await client.query(
         `
         INSERT INTO order_items (
@@ -372,9 +403,10 @@ app.post('/orders', authMiddleware, async (req, res) => {
           name,
           quantity,
           price,
-          unit
+          unit,
+          pieces_per_portion
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         `,
         [
           order.id,
@@ -383,6 +415,7 @@ app.post('/orders', authMiddleware, async (req, res) => {
           item.quantity,
           item.price,
           item.unit,
+          piecesPerPortion,
         ]
       );
     }
@@ -457,28 +490,30 @@ app.post('/orders/:id/repeat', authMiddleware, async (req, res) => {
     const newOrder = orderResult.rows[0];
 
     const itemsResult = await client.query(
-      `
-      INSERT INTO order_items (
-        order_id,
-        product_id,
-        name,
-        quantity,
-        price,
-        unit
-      )
-      SELECT
-        $1,
-        product_id,
-        name,
-        quantity,
-        price,
-        unit
-      FROM order_items
-      WHERE order_id = $2
-      RETURNING *
-      `,
-      [newOrder.id, id]
-    );
+  `
+  INSERT INTO order_items (
+    order_id,
+    product_id,
+    name,
+    quantity,
+    price,
+    unit,
+    pieces_per_portion
+  )
+  SELECT
+    $1,
+    product_id,
+    name,
+    quantity,
+    price,
+    unit,
+    pieces_per_portion
+  FROM order_items
+  WHERE order_id = $2
+  RETURNING *
+  `,
+  [newOrder.id, id]
+);
 
     await client.query('COMMIT');
 
@@ -1021,73 +1056,132 @@ app.get('/analytics/sales', authMiddleware, async (req, res) => {
     );
 
     // 2. Количество проданных товаров
-    const quantityResult = await pool.query(
-      `
-      SELECT
-        COALESCE(
-          SUM(oi.quantity) FILTER (WHERE oi.unit = 'piece'),
-          0
-        )::float AS pieces_sold,
+    // 2. Новые и повторные клиенты
+const clientsResult = await pool.query(
+  `
+  WITH first_orders AS (
+    SELECT
+      client_id,
+      MIN(order_date) AS first_order_date
+    FROM orders
+    WHERE user_id = $1
+      AND status = 'COMPLETED'
+      AND client_id IS NOT NULL
+      AND order_date IS NOT NULL
+    GROUP BY client_id
+  ),
 
-        COALESCE(
-          SUM(oi.quantity) FILTER (WHERE oi.unit = 'portion'),
-          0
-        )::float AS portions_sold
+  period_clients AS (
+    SELECT DISTINCT client_id
+    FROM orders
+    WHERE user_id = $1
+      AND status = 'COMPLETED'
+      AND client_id IS NOT NULL
+      AND order_date BETWEEN $2::date AND $3::date
+  )
 
-      FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
+  SELECT
+    COUNT(*)::int AS total_clients,
 
-      WHERE o.user_id = $1
-        AND o.status = 'COMPLETED'
-        AND o.order_date BETWEEN $2::date AND $3::date
-      `,
-      params
-    );
+    COUNT(*) FILTER (
+      WHERE f.first_order_date
+        BETWEEN $2::date AND $3::date
+    )::int AS new_clients,
+
+    COUNT(*) FILTER (
+      WHERE f.first_order_date < $2::date
+    )::int AS repeat_clients
+
+  FROM period_clients pc
+  JOIN first_orders f
+    ON f.client_id = pc.client_id
+  `,
+  params
+);
+
+const clients = clientsResult.rows[0];
+
+const newClientsPercentage =
+  clients.total_clients > 0
+    ? Number(
+        (
+          clients.new_clients /
+          clients.total_clients * 100
+        ).toFixed(1)
+      )
+    : 0;
+
+const repeatClientsPercentage =
+  clients.total_clients > 0
+    ? Number(
+        (
+          clients.repeat_clients /
+          clients.total_clients * 100
+        ).toFixed(1)
+      )
+    : 0;
 
     // 3. Статистика по товарам
-    const productsResult = await pool.query(
-      `
-      SELECT
-        oi.product_id,
-        COALESCE(p.name, oi.name) AS name,
-        oi.unit,
+    // 3. Статистика по товарам
+const productsResult = await pool.query(
+  `
+  SELECT
+    oi.product_id,
+    COALESCE(p.name, oi.name) AS name,
+    oi.unit,
 
-        SUM(oi.quantity)::float AS quantity_sold,
+    SUM(oi.quantity)::float AS quantity_sold,
 
-        COUNT(DISTINCT o.id)::int AS orders_count,
+    SUM(
+      oi.quantity * oi.pieces_per_portion
+    )::float AS total_pieces,
 
-        SUM(oi.quantity * oi.price)::float AS gross_revenue,
+    CASE
+      WHEN MIN(oi.pieces_per_portion) =
+           MAX(oi.pieces_per_portion)
+      THEN MIN(oi.pieces_per_portion)
+      ELSE NULL
+    END AS pieces_per_portion,
 
-        SUM(
-          CASE
-            WHEN o.subtotal > 0
-            THEN oi.quantity * oi.price * o.total / o.subtotal
-            ELSE 0
-          END
-        )::float AS revenue
+    COUNT(DISTINCT o.id)::int AS orders_count,
 
-      FROM order_items oi
+    SUM(
+      oi.quantity * oi.price
+    )::float AS gross_revenue,
 
-      JOIN orders o
-        ON o.id = oi.order_id
+    SUM(
+      CASE
+        WHEN o.subtotal > 0
+        THEN oi.quantity * oi.price
+          * o.total / o.subtotal
+        ELSE 0
+      END
+    )::float AS revenue
 
-      LEFT JOIN products p
-        ON p.id = oi.product_id
-        AND p.user_id = o.user_id
+  FROM order_items oi
 
-      WHERE o.user_id = $1
-        AND o.status = 'COMPLETED'
-        AND o.order_date BETWEEN $2::date AND $3::date
+  JOIN orders o
+    ON o.id = oi.order_id
 
-      GROUP BY
-        oi.product_id,
-        COALESCE(p.name, oi.name),
-        oi.unit
+  LEFT JOIN products p
+    ON p.id = oi.product_id
+    AND p.user_id = o.user_id
 
-      ORDER BY quantity_sold DESC
-      `,
-      params
-    );
+  WHERE o.user_id = $1
+    AND o.status = 'COMPLETED'
+    AND o.order_date BETWEEN $2::date AND $3::date
+
+  GROUP BY
+    oi.product_id,
+    COALESCE(p.name, oi.name),
+    oi.unit
+
+  ORDER BY
+    total_pieces DESC,
+    revenue DESC
+  `,
+  params
+);
 
     // 4. Динамика продаж по дням
     const dynamicsResult = await pool.query(
@@ -1117,43 +1211,73 @@ app.get('/analytics/sales', authMiddleware, async (req, res) => {
     );
 
     // 5. Загруженность по дням недели
-    const weekdaysResult = await pool.query(
-      `
-      SELECT
-        EXTRACT(ISODOW FROM order_date)::int AS weekday,
+    // 5. Средняя загруженность по дням недели
+const weekdaysResult = await pool.query(
+  `
+  WITH daily_stats AS (
+    SELECT
+      d.day::date AS date,
 
-        COUNT(*)::int AS orders_count,
+      EXTRACT(ISODOW FROM d.day)::int AS weekday,
 
-        COALESCE(SUM(total), 0)::float AS total_sales
+      COUNT(o.id)::int AS orders_count,
 
-      FROM orders
+      COALESCE(SUM(o.total), 0)::float AS total_sales
 
-      WHERE user_id = $1
-        AND status = 'COMPLETED'
-        AND order_date BETWEEN $2::date AND $3::date
+    FROM generate_series(
+      $2::date,
+      $3::date,
+      INTERVAL '1 day'
+    ) AS d(day)
 
-      GROUP BY weekday
-      ORDER BY weekday ASC
-      `,
-      params
-    );
+    LEFT JOIN orders o
+      ON o.order_date = d.day::date
+      AND o.user_id = $1
+      AND o.status = 'COMPLETED'
 
-    const weekdays = Array.from(
-      { length: 7 },
-      (_, index) => {
-        const weekday = index + 1;
+    GROUP BY d.day
+  )
 
-        return (
-          weekdaysResult.rows.find(
-            (row) => row.weekday === weekday
-          ) || {
-            weekday,
-            orders_count: 0,
-            total_sales: 0,
-          }
-        );
+  SELECT
+    weekday,
+
+    COUNT(*)::int AS days_count,
+
+    SUM(orders_count)::int AS orders_count,
+
+    SUM(total_sales)::float AS total_sales,
+
+    ROUND(
+      AVG(orders_count),
+      2
+    )::float AS average_orders
+
+  FROM daily_stats
+
+  GROUP BY weekday
+  ORDER BY weekday ASC
+  `,
+  params
+);
+
+const weekdays = Array.from(
+  { length: 7 },
+  (_, index) => {
+    const weekday = index + 1;
+
+    return (
+      weekdaysResult.rows.find(
+        (row) => row.weekday === weekday
+      ) || {
+        weekday,
+        days_count: 0,
+        orders_count: 0,
+        total_sales: 0,
+        average_orders: 0,
       }
     );
+  }
+);
 
     // 6. Показатели предыдущего периода
     const previousResult = await pool.query(
@@ -1182,8 +1306,14 @@ app.get('/analytics/sales', authMiddleware, async (req, res) => {
         p.id AS product_id,
         p.name,
         p.unit,
+        CASE
+          WHEN p.unit = 'piece' THEN 1
+          ELSE p.pieces_per_portion
+        END AS pieces_per_portion,
         0 AS quantity_sold,
+        0 AS total_pieces,
         0 AS orders_count,
+        0 AS gross_revenue,
         0 AS revenue
 
       FROM products p
@@ -1230,7 +1360,16 @@ app.get('/analytics/sales', authMiddleware, async (req, res) => {
 
       summary: {
         ...summary,
-        ...quantityResult.rows[0],
+
+        total_clients: clients.total_clients,
+
+        new_clients: clients.new_clients,
+
+        repeat_clients: clients.repeat_clients,
+
+        new_clients_percentage: newClientsPercentage,
+
+        repeat_clients_percentage: repeatClientsPercentage,
       },
 
       previous_period: previous,

@@ -1,8 +1,12 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Animated,
+  Easing,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,7 +20,30 @@ import { useAuth } from '@/context/AuthContext';
 import { getSalesAnalytics } from '@/services/analyticsService';
 import { SalesAnalytics } from '@/types/analytics';
 
-type Period = 'week' | 'month' | 'year';
+type Period = 'week' | 'month' | 'year' | 'custom';
+type Range = { start: string; end: string };
+const FULL_WEEKDAYS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+function parseDate(value: string) {
+  const [y,m,d] = value.split('-').map(Number);
+  return new Date(y,m-1,d);
+}
+function validDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && formatDate(parseDate(value)) === value;
+}
+function dayCount(range: Range) {
+  return Math.round((Date.parse(range.end)-Date.parse(range.start))/86400000)+1;
+}
+function shiftRange(range: Range, direction: number): Range {
+  const days = dayCount(range);
+  const start = parseDate(range.start);
+  const end = parseDate(range.end);
+  start.setDate(start.getDate()+days*direction);
+  end.setDate(end.getDate()+days*direction);
+  return {start: formatDate(start), end: formatDate(end)};
+}
+function quantityLabel(p: {unit: string; quantity_sold: number; total_pieces: number}) {
+  return p.unit === 'portion' ? `${formatNumber(p.quantity_sold)} порц. (${formatNumber(p.total_pieces)} шт.)` : `${formatNumber(p.total_pieces)} шт.`;
+}
 type Ranking = 'quantity' | 'revenue';
 type ChartMode = 'sales' | 'orders';
 
@@ -100,6 +127,31 @@ function getPeriodRange(period: Period, offset: number) {
   };
 }
 
+function AnimatedBar({ selected, height, weekday = false }: { selected: boolean; height: number; weekday?: boolean }) {
+  const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  useEffect(() => {
+    const animation = Animated.timing(progress, {
+      toValue: selected ? 1 : 0,
+      duration: 240,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [selected, progress]);
+  return (
+    <Animated.View style={[
+      weekday ? styles.weekdayTrack : styles.chartTrack,
+      { backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: [COLORS.lightGray, '#F6E6E6'] }) },
+    ]}>
+      <Animated.View style={[
+        weekday ? styles.weekdayBar : styles.chartBar,
+        { height, backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: ['#BFC5CD', COLORS.red] }) },
+      ]} />
+    </Animated.View>
+  );
+}
+
 function GrowthLabel({
   value,
 }: {
@@ -179,7 +231,49 @@ export default function SalesAnalyticsScreen() {
   const [showAllUnsold, setShowAllUnsold] =
     useState(false);
 
-  const range = getPeriodRange(period, offset);
+  const [customRange, setCustomRange] = useState<Range>(() => getPeriodRange('month', 0));
+  const [dateModal, setDateModal] = useState(false);
+  const [activeDate, setActiveDate] = useState<'start' | 'end'>('start');
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd] = useState('');
+  const [dateError, setDateError] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedWeekday, setSelectedWeekday] = useState<number | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
+  const range = period === 'custom' ? customRange : getPeriodRange(period, offset);
+  const today = formatDate(new Date());
+  const nextCustom = shiftRange(customRange, 1);
+  const canGoNext = period === 'custom' ? nextCustom.end <= today : offset < 0;
+  const resetSelection = () => {
+    setSelectedDate(null);
+    setSelectedWeekday(null);
+    setScrollX(0);
+  };
+  const prepareRange = (next: Range) => {
+    if (next.start !== range.start || next.end !== range.end) setLoading(true);
+    resetSelection();
+  };
+  const openDates = () => {
+    setActiveDate('start');
+    setDraftStart(range.start);
+    setDraftEnd(range.end);
+    setDateError('');
+    setDateModal(true);
+  };
+  const applyDates = () => {
+    if (!validDate(draftStart) || !validDate(draftEnd) || draftStart > draftEnd || draftEnd > today) {
+      setDateError('Выберите корректный период, не позднее сегодняшнего дня.');
+      return;
+    }
+    const next = {start: draftStart, end: draftEnd};
+    prepareRange(next);
+    setCustomRange(next);
+    setPeriod('custom');
+    setOffset(0);
+    setDateModal(false);
+  };
 
   useEffect(() => {
     if (!token) {
@@ -226,16 +320,21 @@ export default function SalesAnalyticsScreen() {
 
   const changePeriod = (value: Period) => {
     if (period === value && offset === 0) return;
-
-    setLoading(true);
+    prepareRange(getPeriodRange(value, 0));
     setPeriod(value);
     setOffset(0);
   };
 
   const changeOffset = (value: number) => {
+    if (period === 'custom') {
+      const next = shiftRange(customRange, value < offset ? -1 : 1);
+      if (next.end > today) return;
+      prepareRange(next);
+      setCustomRange(next);
+      return;
+    }
     if (value > 0 || value === offset) return;
-
-    setLoading(true);
+    prepareRange(getPeriodRange(period, value));
     setOffset(value);
   };
 
@@ -247,7 +346,7 @@ export default function SalesAnalyticsScreen() {
   const products = [...(data?.products || [])].sort(
     (a, b) =>
       ranking === 'quantity'
-        ? b.quantity_sold - a.quantity_sold
+        ? b.total_pieces - a.total_pieces
         : b.revenue - a.revenue
   );
 
@@ -262,51 +361,39 @@ export default function SalesAnalyticsScreen() {
     : unsoldProducts.slice(0, 5);
 
   const leastPopular = [...(data?.products || [])]
-    .sort((a, b) => a.orders_count - b.orders_count)
+    .sort((a, b) => a.total_pieces - b.total_pieces)
     .slice(0, 3);
 
   const maxProductValue = Math.max(
     1,
     ...products.map((product) =>
       ranking === 'quantity'
-        ? product.quantity_sold
+        ? product.total_pieces
         : product.revenue
     )
   );
 
   const dailyDynamics = data?.dynamics || [];
 
-  // Для годового периода объединяем данные по месяцам.
-  const dynamics =
-    period === 'year'
-      ? Object.values(
-          dailyDynamics.reduce<
-            Record<
-              string,
-              {
-                date: string;
-                orders_count: number;
-                total_sales: number;
-              }
-            >
-          >((acc, item) => {
-            const month = item.date.slice(0, 7);
-
-            if (!acc[month]) {
-              acc[month] = {
-                date: `${month}-01`,
-                orders_count: 0,
-                total_sales: 0,
-              };
-            }
-
-            acc[month].orders_count += item.orders_count;
-            acc[month].total_sales += item.total_sales;
-
-            return acc;
-          }, {})
-        )
-      : dailyDynamics;
+  const grouping = period === 'year' || (period === 'custom' && dayCount(range) > 90)
+    ? 'month' : period === 'custom' && dayCount(range) > 31 ? 'week' : 'day';
+  const dynamics = Object.values(dailyDynamics.reduce<Record<string, {date: string; end: string; orders_count: number; total_sales: number}>>((acc, item) => {
+    const date = parseDate(item.date);
+    date.setDate(date.getDate() - (date.getDay()+6)%7);
+    const key = grouping === 'month' ? item.date.slice(0,7) : grouping === 'week' ? formatDate(date) : item.date;
+    if (!acc[key]) acc[key] = {date: item.date, end: item.date, orders_count: 0, total_sales: 0};
+    acc[key].end = item.date;
+    acc[key].orders_count += item.orders_count;
+    acc[key].total_sales += item.total_sales;
+    return acc;
+  }, {}));
+  const selectedItem =
+  dynamics.find(item => item.date === selectedDate) ||
+  [...dynamics].reverse().find(item => item.orders_count > 0) ||
+  dynamics[dynamics.length - 1];
+  const overflow = chartWidth > 0 && contentWidth > chartWidth + 1;
+  const thumbWidth = overflow ? chartWidth * chartWidth / contentWidth : chartWidth;
+  const thumbOffset = overflow ? Math.max(0, Math.min(1, scrollX / (contentWidth-chartWidth))) * (chartWidth-thumbWidth) : 0;
 
   const maxDynamics = Math.max(
     1,
@@ -320,13 +407,15 @@ export default function SalesAnalyticsScreen() {
   const maxWeekday = Math.max(
     1,
     ...(data?.weekdays || []).map(
-      (item) => item.orders_count
+      (item) => item.average_orders
     )
   );
 
   const busiestDay = [...(data?.weekdays || [])]
-    .sort((a, b) => b.orders_count - a.orders_count)[0];
+    .filter(item => item.days_count > 0)
+    .sort((a, b) => b.average_orders - a.average_orders)[0];
 
+  const selectedDay = data?.weekdays.find(item => item.weekday === selectedWeekday && item.days_count > 0) || busiestDay;
   const hasSales = (data?.summary.orders_count || 0) > 0;
 
   const monthNames = [
@@ -419,7 +508,7 @@ export default function SalesAnalyticsScreen() {
             />
           </Pressable>
 
-          <View style={styles.dateLabel}>
+          <Pressable style={styles.dateLabel} onPress={openDates}>
             <Ionicons
               name="calendar-outline"
               size={17}
@@ -431,10 +520,10 @@ export default function SalesAnalyticsScreen() {
               {' — '}
               {range.end.split('-').reverse().join('.')}
             </Text>
-          </View>
+          </Pressable>
 
           <Pressable
-            disabled={offset === 0}
+            disabled={!canGoNext}
             onPress={() => changeOffset(offset + 1)}
             style={styles.dateArrow}
           >
@@ -442,7 +531,7 @@ export default function SalesAnalyticsScreen() {
               name="chevron-forward"
               size={20}
               color={
-                offset === 0
+                !canGoNext
                   ? '#D5D5D5'
                   : COLORS.black
               }
@@ -560,41 +649,41 @@ export default function SalesAnalyticsScreen() {
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
                 <Ionicons
-                  name="cube-outline"
+                  name="person-add-outline"
                   size={23}
                   color={COLORS.gray}
                 />
 
                 <Text style={styles.metricLabel}>
-                  Продано в штуках
+                  Новые клиенты
                 </Text>
 
                 <Text style={styles.metricValue}>
-                  {formatNumber(data.summary.pieces_sold)}
+                  {formatNumber(data.summary.new_clients)}
                 </Text>
 
                 <Text style={styles.metricUnit}>
-                  шт.
+                  {formatNumber(data.summary.new_clients_percentage)}% клиентов
                 </Text>
               </View>
 
               <View style={styles.metricCard}>
                 <Ionicons
-                  name="pie-chart-outline"
+                  name="people-outline"
                   size={23}
                   color={COLORS.gray}
                 />
 
                 <Text style={styles.metricLabel}>
-                  Продано порций
+                  Повторные клиенты
                 </Text>
 
                 <Text style={styles.metricValue}>
-                  {formatNumber(data.summary.portions_sold)}
+                  {formatNumber(data.summary.repeat_clients)}
                 </Text>
 
                 <Text style={styles.metricUnit}>
-                  порций
+                  {formatNumber(data.summary.repeat_clients_percentage)}% клиентов
                 </Text>
               </View>
             </View>
@@ -651,6 +740,11 @@ export default function SalesAnalyticsScreen() {
               </View>
 
               <View style={styles.chartCard}>
+                {selectedItem && <View style={styles.selectionInfo}>
+                  <Text style={styles.productName}>{shortDate(selectedItem.date)}{selectedItem.end !== selectedItem.date ? ` — ${shortDate(selectedItem.end)}` : ''}</Text>
+                  <Text style={styles.metricValue}>{formatMoney(selectedItem.total_sales)}</Text>
+                  <Text style={styles.metricUnit}>{selectedItem.orders_count} зак.</Text>
+                </View>}
                 <Text style={styles.chartMaximum}>
                   {chartMode === 'sales'
                     ? formatMoney(maxDynamics)
@@ -660,6 +754,11 @@ export default function SalesAnalyticsScreen() {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
+                  key={`${range.start}-${range.end}-${grouping}`}
+                  onLayout={e => setChartWidth(e.nativeEvent.layout.width)}
+                  onContentSizeChange={w => setContentWidth(w)}
+                  onScroll={e => setScrollX(e.nativeEvent.contentOffset.x)}
+                  scrollEventThrottle={16}
                   contentContainerStyle={
                     styles.chartContent
                   }
@@ -674,7 +773,8 @@ export default function SalesAnalyticsScreen() {
                       (value / maxDynamics) * 130;
 
                     return (
-                      <View
+                      <Pressable
+                        onPress={() => setSelectedDate(item.date)}
                         key={item.date}
                         style={[
                           styles.chartColumn,
@@ -686,26 +786,10 @@ export default function SalesAnalyticsScreen() {
                           },
                         ]}
                       >
-                        <View style={styles.chartTrack}>
-                          <View
-                            style={[
-                              styles.chartBar,
-                              {
-                                height: Math.max(
-                                  value > 0 ? 4 : 0,
-                                  height
-                                ),
-                                backgroundColor:
-                                  chartMode === 'sales'
-                                    ? COLORS.blue
-                                    : COLORS.red,
-                              },
-                            ]}
-                          />
-                        </View>
+                        <AnimatedBar selected={selectedItem?.date === item.date} height={Math.max(value > 0 ? 4 : 0, height)} />
 
                         <Text style={styles.chartDate}>
-                          {period === 'year'
+                          {grouping === 'month'
                             ? monthNames[
                                 Number(
                                   item.date.slice(5, 7)
@@ -713,10 +797,14 @@ export default function SalesAnalyticsScreen() {
                               ]
                             : shortDate(item.date)}
                         </Text>
-                      </View>
+                      </Pressable>
                     );
                   })}
                 </ScrollView>
+                {overflow && <>
+                  <View style={styles.scrollTrack}><View style={[styles.scrollThumb, {width: thumbWidth, left: thumbOffset}]} /></View>
+                  <Text style={styles.scrollHint}>Листайте для просмотра всех дат</Text>
+                </>}
               </View>
             </View>
 
@@ -769,7 +857,7 @@ export default function SalesAnalyticsScreen() {
                   visibleProducts.map((product, index) => {
                     const value =
                       ranking === 'quantity'
-                        ? product.quantity_sold
+                        ? product.total_pieces
                         : product.revenue;
 
                     return (
@@ -799,13 +887,7 @@ export default function SalesAnalyticsScreen() {
 
                             <Text style={styles.productValue}>
                               {ranking === 'quantity'
-                                ? `${formatNumber(
-                                    product.quantity_sold
-                                  )} ${
-                                    product.unit === 'piece'
-                                      ? 'шт.'
-                                      : 'порц.'
-                                  }`
+                                ? `${formatNumber(product.total_pieces)} шт.`
                                 : formatMoney(product.revenue)}
                             </Text>
                           </View>
@@ -830,17 +912,13 @@ export default function SalesAnalyticsScreen() {
 
                           <Text style={styles.productCaption}>
                             {product.orders_count} зак.
-                            {' · '}
+
                             {ranking === 'quantity'
-                              ? formatMoney(product.revenue)
-                              : `${formatNumber(
-                                  product.quantity_sold
-                                )} ${
-                                  product.unit === 'piece'
-                                    ? 'шт.'
-                                    : 'порц.'
-                                }`}
-                          </Text>
+                                ? product.unit === 'portion'
+                                ? ` · ${formatNumber(product.quantity_sold)} порц.`
+                                : ''
+                                : ` · ${quantityLabel(product)}`}
+                            </Text>
                         </View>
                       </View>
                     );
@@ -882,46 +960,37 @@ export default function SalesAnalyticsScreen() {
               </Text>
 
               <Text style={styles.sectionSubtitle}>
-                Количество заказов по дням недели
+                Среднее количество заказов по дням недели
               </Text>
 
               <View style={styles.chartCard}>
+                {selectedDay && <View style={styles.selectionInfo}>
+                  <Text style={styles.productName}>{FULL_WEEKDAYS[selectedDay.weekday-1]}</Text>
+                  <Text style={styles.metricValue}>{formatNumber(selectedDay.average_orders)} зак. в среднем</Text>
+                  <Text style={styles.metricUnit}>Всего: {selectedDay.orders_count} зак.</Text>
+                </View>}
                 <View style={styles.weekdaysChart}>
                   {data.weekdays.map((item) => {
                     const isBusiest =
-                      hasSales &&
-                      item.weekday === busiestDay?.weekday;
+                      item.weekday === selectedDay?.weekday;
 
                     return (
-                      <View
+                      <Pressable
+                        disabled={item.days_count === 0}
+                        onPress={() => setSelectedWeekday(item.weekday)}
                         key={item.weekday}
                         style={styles.weekdayColumn}
                       >
                         <Text style={styles.weekdayCount}>
-                          {item.orders_count}
+                          {item.days_count ? formatNumber(item.average_orders) : "—"}
                         </Text>
 
-                        <View style={styles.weekdayTrack}>
-                          <View
-                            style={[
-                              styles.weekdayBar,
-                              {
-                                height:
-                                  (item.orders_count /
-                                    maxWeekday) *
-                                  105,
-                                backgroundColor: isBusiest
-                                  ? COLORS.red
-                                  : '#BFC5CD',
-                              },
-                            ]}
-                          />
-                        </View>
+                        <AnimatedBar weekday selected={isBusiest} height={(item.average_orders / maxWeekday) * 105} />
 
                         <Text style={styles.weekdayLabel}>
                           {WEEKDAYS[item.weekday - 1]}
                         </Text>
-                      </View>
+                      </Pressable>
                     );
                   })}
                 </View>
@@ -963,7 +1032,7 @@ export default function SalesAnalyticsScreen() {
                 </Text>
 
                 <Text style={styles.sectionSubtitle}>
-                  Реже всего встречаются в заказах
+                  Наименьшее количество проданных изделий
                 </Text>
 
                 <View style={styles.listCard}>
@@ -990,15 +1059,12 @@ export default function SalesAnalyticsScreen() {
                         </Text>
 
                         <Text style={styles.productCaption}>
-                          {formatNumber(product.quantity_sold)}
-                          {product.unit === 'piece'
-                            ? ' шт.'
-                            : ' порц.'}
+                          {quantityLabel(product)} · {product.orders_count} зак.
                         </Text>
                       </View>
 
                       <Text style={styles.productValue}>
-                        {product.orders_count} зак.
+                        {formatNumber(product.total_pieces)} шт.
                       </Text>
                     </View>
                   ))}
@@ -1096,11 +1162,77 @@ export default function SalesAnalyticsScreen() {
           </>
         ) : null}
       </ScrollView>
+      <Modal visible={dateModal} transparent animationType="slide" onRequestClose={() => setDateModal(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDateModal(false)} />
+          <SafeAreaView edges={['bottom']} style={styles.modalCard}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sectionTitle}>Выбор периода</Text>
+              <Pressable hitSlop={12} onPress={() => setDateModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.gray} />
+              </Pressable>
+            </View>
+            <Text style={styles.sectionSubtitle}>Выберите начало и конец периода</Text>
+            {(['start', 'end'] as const).map(field => (
+              <Pressable key={field} onPress={() => setActiveDate(field)} style={[styles.dateInput, activeDate === field && styles.activeDateInput]}>
+                <View>
+                  <Text style={styles.dateFieldLabel}>{field === 'start' ? 'Дата начала' : 'Дата окончания'}</Text>
+                  <Text style={styles.dateFieldValue}>{parseDate(field === 'start' ? draftStart : draftEnd).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'})}</Text>
+                </View>
+                <Ionicons name="calendar-outline" size={21} color={activeDate === field ? COLORS.red : COLORS.gray} />
+              </Pressable>
+            ))}
+            {dateModal && <DateTimePicker
+              key={activeDate}
+              value={parseDate(activeDate === 'start' ? draftStart : draftEnd)}
+              mode="date"
+              display="spinner"
+              locale="ru-RU"
+              themeVariant="light"
+              minimumDate={activeDate === 'end' ? parseDate(draftStart) : undefined}
+              maximumDate={parseDate(today)}
+              onChange={(_, date) => {
+                if (!date) return;
+                const value = formatDate(date);
+                setDateError('');
+                if (activeDate === 'start') {
+                  setDraftStart(value);
+                  if (value > draftEnd) setDraftEnd(value);
+                } else {
+                  setDraftEnd(value < draftStart ? draftStart : value);
+                }
+              }}
+              style={styles.datePicker}
+            />}
+            {!!dateError && <Text style={styles.dateError}>{dateError}</Text>}
+            <Pressable style={styles.applyButton} onPress={applyDates}><Text style={styles.applyText}>Применить</Text></Pressable>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  selectionInfo: {marginBottom: 14, gap: 3},
+  
+  scrollTrack: {height: 3, backgroundColor: COLORS.lightGray, borderRadius: 3, marginTop: 12},
+  scrollThumb: {position: 'absolute', height: 3, backgroundColor: '#A9A9A9', borderRadius: 3},
+  scrollHint: {fontSize: 10, color: COLORS.gray, textAlign: 'center', marginTop: 7},
+  modalOverlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end'},
+  modalCard: {backgroundColor: COLORS.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 20},
+  sheetHandle: {width: 36, height: 4, borderRadius: 2, backgroundColor: '#CCCCCC', alignSelf: 'center', marginBottom: 20},
+  sheetHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  activeDateInput: {borderColor: COLORS.red},
+  dateFieldLabel: {fontSize: 12, color: COLORS.gray, marginBottom: 5},
+  dateFieldValue: {fontSize: 16, color: COLORS.black, fontWeight: '600'},
+  datePicker: {height: 180, alignSelf: 'stretch'},
+  dateInput: {backgroundColor: COLORS.lightGray, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'transparent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8},
+  dateError: {color: COLORS.red, fontSize: 12, marginTop: 10},
+  applyButton: {backgroundColor: COLORS.black, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 20},
+  applyText: {color: COLORS.white, fontWeight: '600'},
+
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1349,9 +1481,9 @@ const styles = StyleSheet.create({
 
   chartContent: {
     flexGrow: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: 8,
-  },
+    },
 
   chartColumn: {
     alignItems: 'center',

@@ -1,8 +1,12 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Animated,
+  Easing,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,7 +20,27 @@ import { useAuth } from '@/context/AuthContext';
 import { getFinancialAnalytics } from '@/services/analyticsService';
 import { FinancialAnalytics } from '@/types/analytics';
 
-type Period = 'week' | 'month' | 'year';
+type Period = 'week' | 'month' | 'year' | 'custom';
+type Range = { start: string; end: string };
+function parseDate(value: string) {
+  const [y,m,d] = value.split('-').map(Number);
+  return new Date(y,m-1,d);
+}
+function validDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && formatDate(parseDate(value)) === value;
+}
+function dayCount(range: Range) {
+  return Math.round((Date.parse(range.end)-Date.parse(range.start))/86400000)+1;
+}
+function shiftRange(range: Range, direction: number): Range {
+  const days = dayCount(range);
+  const start = parseDate(range.start);
+  const end = parseDate(range.end);
+  start.setDate(start.getDate()+days*direction);
+  end.setDate(end.getDate()+days*direction);
+  return {start: formatDate(start), end: formatDate(end)};
+}
+type ChartMode = 'income' | 'payments';
 
 const COLORS = {
   black: '#222222',
@@ -130,6 +154,31 @@ function getPeriodRange(period: Period, offset: number) {
   };
 }
 
+function AnimatedBar({ selected, height }: { selected: boolean; height: number }) {
+  const progress = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  useEffect(() => {
+    const animation = Animated.timing(progress, {
+      toValue: selected ? 1 : 0,
+      duration: 240,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [selected, progress]);
+  return (
+    <Animated.View style={[
+      styles.chartTrack,
+      { backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: [COLORS.lightGray, '#E4EDF6'] }) },
+    ]}>
+      <Animated.View style={[
+        styles.chartBar,
+        { height, backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: ['#BFC5CD', COLORS.blue] }) },
+      ]} />
+    </Animated.View>
+  );
+}
+
 function GrowthLabel({
   value,
   dark = false,
@@ -204,10 +253,48 @@ export default function FinancialAnalyticsScreen() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
 
-  const [selectedDate, setSelectedDate] =
-    useState<string | null>(null);
-
-  const range = getPeriodRange(period, offset);
+  const [chartMode, setChartMode] = useState<ChartMode>('income');
+  const [customRange, setCustomRange] = useState<Range>(() => getPeriodRange('month', 0));
+  const [dateModal, setDateModal] = useState(false);
+  const [activeDate, setActiveDate] = useState<'start' | 'end'>('start');
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd] = useState('');
+  const [dateError, setDateError] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
+  const range = period === 'custom' ? customRange : getPeriodRange(period, offset);
+  const today = formatDate(new Date());
+  const nextCustom = shiftRange(customRange, 1);
+  const canGoNext = period === 'custom' ? nextCustom.end <= today : offset < 0;
+  const resetSelection = () => {
+    setSelectedDate(null);
+    setScrollX(0);
+  };
+  const prepareRange = (next: Range) => {
+    if (next.start !== range.start || next.end !== range.end) setLoading(true);
+    resetSelection();
+  };
+  const openDates = () => {
+    setActiveDate('start');
+    setDraftStart(range.start);
+    setDraftEnd(range.end);
+    setDateError('');
+    setDateModal(true);
+  };
+  const applyDates = () => {
+    if (!validDate(draftStart) || !validDate(draftEnd) || draftStart > draftEnd || draftEnd > today) {
+      setDateError('Выберите корректный период, не позднее сегодняшнего дня.');
+      return;
+    }
+    const next = {start: draftStart, end: draftEnd};
+    prepareRange(next);
+    setCustomRange(next);
+    setPeriod('custom');
+    setOffset(0);
+    setDateModal(false);
+  };
 
   useEffect(() => {
     if (!token) {
@@ -263,31 +350,22 @@ export default function FinancialAnalyticsScreen() {
   ]);
 
   const changePeriod = (value: Period) => {
-    if (period === value && offset === 0) {
-      return;
-    }
-
-    const nextRange = getPeriodRange(value, 0);
-
-    if (
-      nextRange.start !== range.start ||
-      nextRange.end !== range.end
-    ) {
-      setLoading(true);
-    }
-
-    setSelectedDate(null);
+    if (period === value && offset === 0) return;
+    prepareRange(getPeriodRange(value, 0));
     setPeriod(value);
     setOffset(0);
   };
 
   const changeOffset = (value: number) => {
-    if (value > 0 || value === offset) {
+    if (period === 'custom') {
+      const next = shiftRange(customRange, value < offset ? -1 : 1);
+      if (next.end > today) return;
+      prepareRange(next);
+      setCustomRange(next);
       return;
     }
-
-    setLoading(true);
-    setSelectedDate(null);
+    if (value > 0 || value === offset) return;
+    prepareRange(getPeriodRange(period, value));
     setOffset(value);
   };
 
@@ -298,60 +376,28 @@ export default function FinancialAnalyticsScreen() {
 
   const dailyDynamics = data?.dynamics || [];
 
-  const dynamics =
-    period === 'year'
-      ? Object.values(
-          dailyDynamics.reduce<
-            Record<
-              string,
-              {
-                date: string;
-                total_income: number;
-                payments_count: number;
-              }
-            >
-          >((acc, item) => {
-            const month = item.date.slice(0, 7);
+  const grouping = period === 'year' || (period === 'custom' && dayCount(range) > 90)
+    ? 'month' : period === 'custom' && dayCount(range) > 31 ? 'week' : 'day';
+  const dynamics = Object.values(dailyDynamics.reduce<Record<string, {date: string; end: string; payments_count: number; total_income: number}>>((acc, item) => {
+    const date = parseDate(item.date);
+    date.setDate(date.getDate() - (date.getDay()+6)%7);
+    const key = grouping === 'month' ? item.date.slice(0,7) : grouping === 'week' ? formatDate(date) : item.date;
+    if (!acc[key]) acc[key] = {date: item.date, end: item.date, payments_count: 0, total_income: 0};
+    acc[key].end = item.date;
+    acc[key].payments_count += item.payments_count;
+    acc[key].total_income += item.total_income;
+    return acc;
+  }, {}));
+  const selectedIncome =
+  dynamics.find(item => item.date === selectedDate) ||
+  [...dynamics].reverse().find(item => item.total_income > 0) ||
+  dynamics[dynamics.length - 1];
+  const overflow = chartWidth > 0 && contentWidth > chartWidth + 1;
+  const thumbWidth = overflow ? chartWidth * chartWidth / contentWidth : chartWidth;
+  const thumbOffset = overflow ? Math.max(0, Math.min(1, scrollX / (contentWidth-chartWidth))) * (chartWidth-thumbWidth) : 0;
 
-            if (!acc[month]) {
-              acc[month] = {
-                date: `${month}-01`,
-                total_income: 0,
-                payments_count: 0,
-              };
-            }
-
-            acc[month].total_income +=
-              item.total_income;
-
-            acc[month].payments_count +=
-              item.payments_count;
-
-            return acc;
-          }, {})
-        )
-      : dailyDynamics;
-
-  const maxIncome = Math.max(
-    0,
-    ...dynamics.map(
-      (item) => item.total_income
-    )
-  );
-
-  const selectedIncome = dynamics.find(
-    (item) => item.date === selectedDate
-  );
-
-  const chartLabel = (date: string) => {
-    if (period === 'year') {
-      return MONTHS[
-        Number(date.slice(5, 7)) - 1
-      ].slice(0, 3);
-    }
-
-    return `${date.slice(8, 10)}.${date.slice(5, 7)}`;
-  };
+  const maxDynamics = Math.max(0, ...dynamics.map(item => chartMode === 'income' ? item.total_income : item.payments_count));
+  const chartLabel = (date: string) => grouping === 'month' ? MONTHS[Number(date.slice(5, 7)) - 1].slice(0, 3) : date.slice(8, 10) + '.' + date.slice(5, 7);
 
   const forecastProgress =
     data && data.forecast.predicted_income > 0
@@ -476,7 +522,7 @@ export default function FinancialAnalyticsScreen() {
             />
           </Pressable>
 
-          <View style={styles.dateLabel}>
+          <Pressable style={styles.dateLabel} onPress={openDates}>
             <Ionicons
               name="calendar-outline"
               size={17}
@@ -484,14 +530,14 @@ export default function FinancialAnalyticsScreen() {
             />
 
             <Text style={styles.dateText}>
-              {displayDate(range.start)}
+              {range.start.split('-').reverse().join('.')}
               {' — '}
-              {displayDate(range.end)}
+              {range.end.split('-').reverse().join('.')}
             </Text>
-          </View>
+          </Pressable>
 
           <Pressable
-            disabled={offset === 0}
+            disabled={!canGoNext}
             onPress={() =>
               changeOffset(offset + 1)
             }
@@ -643,30 +689,6 @@ export default function FinancialAnalyticsScreen() {
               </View>
             </View>
 
-            <View style={styles.paidOrdersCard}>
-              <View style={styles.grayIcon}>
-                <Ionicons
-                  name="receipt-outline"
-                  size={22}
-                  color={COLORS.black}
-                />
-              </View>
-
-              <View style={styles.flex}>
-                <Text style={styles.rowTitle}>
-                  Заказы с поступлениями
-                </Text>
-
-                <Text style={styles.rowSubtitle}>
-                  Получена хотя бы одна оплата
-                </Text>
-              </View>
-
-              <Text style={styles.rowValue}>
-                {data.summary.paid_orders_count}
-              </Text>
-            </View>
-
             {/* Динамика доходов */}
 
             <View style={styles.section}>
@@ -678,122 +700,39 @@ export default function FinancialAnalyticsScreen() {
                 Фактические денежные поступления
               </Text>
 
+              <View style={styles.smallSelector}>
+                {([['income', 'Сумма поступлений'], ['payments', 'Оплаты']] as const).map(([value, label]) => (
+                  <Pressable key={value} onPress={() => setChartMode(value)} style={[styles.smallSelectorButton, chartMode === value && styles.smallSelectorActive]}>
+                    <Text style={[styles.smallSelectorText, chartMode === value && styles.smallSelectorTextActive]}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <View style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                  <View style={styles.flex}>
-                    <Text style={styles.chartCaption}>
-                      {selectedIncome
-                        ? period === 'year'
-                          ? displayMonth(
-                              selectedIncome.date.slice(0, 7)
-                            )
-                          : displayDate(selectedIncome.date)
-                        : 'Максимальное поступление'}
-                    </Text>
-
-                    <Text style={styles.chartValue}>
-                      {formatMoney(
-                        selectedIncome
-                          ? selectedIncome.total_income
-                          : maxIncome
-                      )}
-                    </Text>
-                  </View>
-
-                  {selectedIncome && (
-                    <Pressable
-                      onPress={() =>
-                        setSelectedDate(null)
-                      }
-                      hitSlop={8}
-                    >
-                      <Ionicons
-                        name="close-circle"
-                        size={22}
-                        color="#CCCCCC"
-                      />
-                    </Pressable>
-                  )}
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={
-                    styles.chartContent
-                  }
-                >
-                  {dynamics.map((item) => {
-                    const height =
-                      maxIncome > 0
-                        ? item.total_income /
-                          maxIncome *
-                          150
-                        : 0;
-
-                    const isSelected =
-                      selectedDate === item.date;
-
-                    return (
-                      <Pressable
-                        key={item.date}
-                        onPress={() =>
-                          setSelectedDate(
-                            isSelected
-                              ? null
-                              : item.date
-                          )
-                        }
-                        style={[
-                          styles.chartColumn,
-                          {
-                            width:
-                              dynamics.length <= 7
-                                ? 40
-                                : 29,
-                          },
-                        ]}
-                      >
-                        <View style={styles.chartTrack}>
-                          <View
-                            style={[
-                              styles.chartBar,
-                              {
-                                height: Math.max(
-                                  item.total_income > 0
-                                    ? 4
-                                    : 0,
-                                  height
-                                ),
-
-                                backgroundColor:
-                                  isSelected
-                                    ? COLORS.black
-                                    : COLORS.blue,
-                              },
-                            ]}
-                          />
-                        </View>
-
-                        <Text
-                          style={[
-                            styles.chartDate,
-                            isSelected && {
-                              color: COLORS.black,
-                              fontWeight: '700',
-                            },
-                          ]}
-                        >
-                          {chartLabel(item.date)}
-                        </Text>
-                      </Pressable>
-                    );
+                {selectedIncome && <View style={styles.selectionInfo}>
+                  <Text style={styles.selectionDate}>{grouping === 'month' ? displayMonth(selectedIncome.date.slice(0, 7)) : displayDate(selectedIncome.date)}{grouping === 'week' && selectedIncome.end !== selectedIncome.date ? ` — ${displayDate(selectedIncome.end)}` : ''}</Text>
+                  <Text style={styles.chartValue}>{formatMoney(selectedIncome.total_income)}</Text>
+                  <Text style={styles.chartCaption}>Оплат: {selectedIncome.payments_count}</Text>
+                </View>}
+                <Text style={styles.chartMaximum}>{chartMode === 'income' ? formatMoney(maxDynamics) : `Оплат: ${maxDynamics}`}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  key={`${range.start}-${range.end}-${grouping}`}
+                  onLayout={e => setChartWidth(e.nativeEvent.layout.width)}
+                  onContentSizeChange={w => setContentWidth(w)}
+                  onScroll={e => setScrollX(e.nativeEvent.contentOffset.x)}
+                  scrollEventThrottle={16} contentContainerStyle={styles.chartContent}>
+                  {dynamics.map(item => {
+                    const value = chartMode === 'income' ? item.total_income : item.payments_count;
+                    const height = maxDynamics > 0 ? value / maxDynamics * 130 : 0;
+                    return <Pressable key={item.date} onPress={() => setSelectedDate(item.date)} style={[styles.chartColumn, {width: dynamics.length <= 7 ? 40 : 28}]}>
+                      <AnimatedBar selected={selectedIncome?.date === item.date} height={Math.max(value > 0 ? 4 : 0, height)} />
+                      <Text style={styles.chartDate}>{chartLabel(item.date)}</Text>
+                    </Pressable>;
                   })}
                 </ScrollView>
-
-                <Text style={styles.chartHint}>
-                  Нажмите на столбец, чтобы увидеть сумму
-                </Text>
+                {overflow && <>
+                  <View style={styles.scrollTrack}><View style={[styles.scrollThumb, {width: thumbWidth, left: thumbOffset}]} /></View>
+                  <Text style={styles.scrollHint}>Листайте для просмотра всех дат</Text>
+                </>}
               </View>
             </View>
 
@@ -1262,11 +1201,113 @@ export default function FinancialAnalyticsScreen() {
           </>
         ) : null}
       </ScrollView>
+      <Modal visible={dateModal} transparent animationType="slide" onRequestClose={() => setDateModal(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDateModal(false)} />
+          <SafeAreaView edges={['bottom']} style={styles.modalCard}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sectionTitle}>Выбор периода</Text>
+              <Pressable hitSlop={12} onPress={() => setDateModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.gray} />
+              </Pressable>
+            </View>
+            <Text style={styles.sectionSubtitle}>Выберите начало и конец периода</Text>
+            {(['start', 'end'] as const).map(field => (
+              <Pressable key={field} onPress={() => setActiveDate(field)} style={[styles.dateInput, activeDate === field && styles.activeDateInput]}>
+                <View>
+                  <Text style={styles.dateFieldLabel}>{field === 'start' ? 'Дата начала' : 'Дата окончания'}</Text>
+                  <Text style={styles.dateFieldValue}>{parseDate(field === 'start' ? draftStart : draftEnd).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'})}</Text>
+                </View>
+                <Ionicons name="calendar-outline" size={21} color={activeDate === field ? COLORS.blue : COLORS.gray} />
+              </Pressable>
+            ))}
+            {dateModal && <DateTimePicker
+              key={activeDate}
+              value={parseDate(activeDate === 'start' ? draftStart : draftEnd)}
+              mode="date"
+              display="spinner"
+              locale="ru-RU"
+              themeVariant="light"
+              minimumDate={activeDate === 'end' ? parseDate(draftStart) : undefined}
+              maximumDate={parseDate(today)}
+              onChange={(_, date) => {
+                if (!date) return;
+                const value = formatDate(date);
+                setDateError('');
+                if (activeDate === 'start') {
+                  setDraftStart(value);
+                  if (value > draftEnd) setDraftEnd(value);
+                } else {
+                  setDraftEnd(value < draftStart ? draftStart : value);
+                }
+              }}
+              style={styles.datePicker}
+            />}
+            {!!dateError && <Text style={styles.dateError}>{dateError}</Text>}
+            <Pressable style={styles.applyButton} onPress={applyDates}><Text style={styles.applyText}>Применить</Text></Pressable>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  selectionInfo: {marginBottom: 14, gap: 3},
+  
+  scrollTrack: {height: 3, backgroundColor: COLORS.lightGray, borderRadius: 3, marginTop: 12},
+  scrollThumb: {position: 'absolute', height: 3, backgroundColor: '#A9A9A9', borderRadius: 3},
+  scrollHint: {fontSize: 10, color: COLORS.gray, textAlign: 'center', marginTop: 7},
+  modalOverlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end'},
+  modalCard: {backgroundColor: COLORS.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 20},
+  sheetHandle: {width: 36, height: 4, borderRadius: 2, backgroundColor: '#CCCCCC', alignSelf: 'center', marginBottom: 20},
+  sheetHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  activeDateInput: {borderColor: COLORS.blue},
+  dateFieldLabel: {fontSize: 12, color: COLORS.gray, marginBottom: 5},
+  dateFieldValue: {fontSize: 16, color: COLORS.black, fontWeight: '600'},
+  datePicker: {height: 180, alignSelf: 'stretch'},
+  dateInput: {backgroundColor: COLORS.lightGray, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'transparent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8},
+  dateError: {color: COLORS.blue, fontSize: 12, marginTop: 10},
+  applyButton: {backgroundColor: COLORS.black, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 20},
+  applyText: {color: COLORS.white, fontWeight: '600'},
+
+  smallSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  smallSelectorButton: {
+    flex: 1,
+    backgroundColor: COLORS.lightGray,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+
+  smallSelectorActive: {
+    backgroundColor: COLORS.black,
+  },
+
+  smallSelectorText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.gray,
+  },
+
+  smallSelectorTextActive: {
+    color: COLORS.white,
+  },
+
+  chartMaximum: {
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 10,
+  },
+
+  selectionDate: {fontSize: 14, fontWeight: '600', color: COLORS.black},
+
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1459,24 +1500,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  paidOrdersCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 16,
-    padding: 15,
-  },
-
-  grayIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   rowTitle: {
     fontSize: 14,
     fontWeight: '600',
@@ -1487,12 +1510,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.gray,
     marginTop: 5,
-  },
-
-  rowValue: {
-    fontSize: 23,
-    fontWeight: '700',
-    color: COLORS.black,
   },
 
   section: {
@@ -1521,12 +1538,6 @@ const styles = StyleSheet.create({
     padding: 15,
   },
 
-  chartHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-
   chartCaption: {
     fontSize: 12,
     color: COLORS.gray,
@@ -1541,7 +1552,7 @@ const styles = StyleSheet.create({
 
   chartContent: {
     flexGrow: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: 8,
   },
 
@@ -1550,7 +1561,7 @@ const styles = StyleSheet.create({
   },
 
   chartTrack: {
-    height: 160,
+    height: 140,
     width: '100%',
     backgroundColor: COLORS.lightGray,
     borderRadius: 6,
@@ -1567,13 +1578,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.gray,
     marginTop: 9,
-  },
-
-  chartHint: {
-    fontSize: 11,
-    color: COLORS.gray,
-    textAlign: 'center',
-    marginTop: 18,
   },
 
   forecastCard: {

@@ -3,12 +3,19 @@ export type AnalyticsPeriod = {
   end_date: string;
 };
 
+// SALES ANALYTICS
+
 export type SalesSummary = {
   orders_count: number;
   total_sales: number;
   average_check: number;
-  pieces_sold: number;
-  portions_sold: number;
+
+  total_clients: number;
+  new_clients: number;
+  repeat_clients: number;
+
+  new_clients_percentage: number;
+  repeat_clients_percentage: number;
 };
 
 export type PreviousSalesSummary = {
@@ -27,7 +34,11 @@ export type ProductAnalytics = {
   product_id: string | null;
   name: string;
   unit: 'piece' | 'portion';
+
   quantity_sold: number;
+  total_pieces: number;
+  pieces_per_portion: number | null;
+
   orders_count: number;
   gross_revenue: number;
   revenue: number;
@@ -37,8 +48,13 @@ export type UnsoldProduct = {
   product_id: string;
   name: string;
   unit: 'piece' | 'portion';
+
   quantity_sold: number;
+  total_pieces: number;
+  pieces_per_portion: number | null;
+
   orders_count: number;
+  gross_revenue: number;
   revenue: number;
 };
 
@@ -50,8 +66,10 @@ export type SalesDynamics = {
 
 export type WeekdayAnalytics = {
   weekday: number;
+  days_count: number;
   orders_count: number;
   total_sales: number;
+  average_orders: number;
 };
 
 export type SalesAnalytics = {
@@ -64,6 +82,8 @@ export type SalesAnalytics = {
   dynamics: SalesDynamics[];
   weekdays: WeekdayAnalytics[];
 };
+
+// FINANCIAL ANALYTICS
 
 export type FinancialSummary = {
   total_income: number;
